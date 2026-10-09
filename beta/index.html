@@ -1,0 +1,1545 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Team Output Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap">
+<style>
+/* Layout: one-column phone scoreboard. Header + round switch, team tabs, 2x2 station counters, standings table, team setup. */
+:root {
+  --bg: #eef0ec;
+  --surface: #ffffff;
+  --fg: #16191a;
+  --muted: #5f6763;
+  --line: #d3d8d3;
+  --accent: #1f6feb;
+  --accent-fg: #ffffff;
+  --press: #e3e7e2;
+  --danger: #c2321f;
+  --t1: #1f6feb; --t2: #d9480f; --t3: #2b8a3e; --t4: #9c36b5; --t5: #c08a00; --t6: #0c8599;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
+  color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; -webkit-tap-highlight-color: transparent; }
+.wrap { max-width: 640px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 40px; display: flex; flex-direction: column; gap: 18px; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; touch-action: manipulation; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 2rem; line-height: 1; margin: 0; letter-spacing: .01em; text-transform: uppercase; }
+h1 small { display: block; font-family: var(--body); font-weight: 600; font-size: .75rem; letter-spacing: .08em; color: var(--muted); margin-top: 4px; }
+h2 { font-family: var(--display); font-weight: 800; font-size: 1.3rem; text-transform: uppercase; letter-spacing: .03em; margin: 0; }
+
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: .04em; text-transform: uppercase; padding: 8px 16px; border-radius: 999px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+
+.teams { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.teams button { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); font-weight: 600; }
+.teams button .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); }
+.teams button[aria-pressed="true"] { border-color: var(--tc); box-shadow: inset 0 0 0 1px var(--tc); }
+
+.board { border-top: 6px solid var(--tc); background: var(--surface); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.board-head .name { font-family: var(--display); font-weight: 800; font-size: 1.5rem; text-transform: uppercase; }
+.board-head .rnd { color: var(--muted); font-size: .85rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 360px) { .grid { grid-template-columns: 1fr; } }
+
+.st { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.st-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.st-name { font-weight: 600; font-size: .9rem; }
+.st-unit { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.st-info { font-size: .72rem; color: var(--muted); margin-top: -6px; }
+.st-val { font-family: var(--display); font-weight: 800; font-size: 3.2rem; line-height: .95; font-variant-numeric: tabular-nums; text-align: center; width: 100%; padding: 2px 0; border-radius: 8px; }
+.st-val:active { background: var(--press); }
+.st-input { font-family: var(--display); font-weight: 800; font-size: 2.6rem; text-align: center; width: 100%; border: 2px solid var(--accent); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 2px 0; }
+.st-other { text-align: center; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.btns button { padding: 12px 0; border-radius: 10px; background: var(--press); font-family: var(--display); font-weight: 800; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.btns button.plus { background: var(--tc); color: var(--accent-fg); }
+.btns button:active { transform: scale(.96); }
+.minus-row { display: flex; justify-content: center; }
+.minus-row button { font-size: .8rem; color: var(--muted); padding: 4px 10px; border-radius: 8px; }
+.minus-row button:active { background: var(--press); }
+
+.card { background: var(--surface); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.tools > summary { background: var(--surface); border-radius: 14px; padding: 14px; font-weight: 700; cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.tools > summary::-webkit-details-marker { display: none; }
+.tools > summary::after { content: "Show"; font-size: .8rem; font-weight: 600; color: var(--muted); }
+.tools[open] > summary::after { content: "Hide"; }
+.tools > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.tools-body { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td .rk { display: block; font-size: .7rem; color: var(--muted); }
+td.pts { font-family: var(--display); font-weight: 800; font-size: 1.2rem; }
+tr.lead td.pts { color: var(--accent); }
+.tname { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.tname .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc); }
+.note { font-size: .8rem; color: var(--muted); margin: 0; line-height: 1.45; }
+
+.setup-row { display: flex; gap: 8px; align-items: center; }
+.setup-row input { flex: 1; min-width: 0; font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.setup-row .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
+.ghost { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); font-weight: 600; font-size: .9rem; }
+.ghost.danger { color: var(--danger); border-color: var(--danger); }
+.solid-danger { padding: 9px 12px; border-radius: 8px; background: var(--danger); color: var(--surface); font-weight: 600; font-size: .9rem; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .9rem; }
+@media (prefers-reduced-motion: reduce) { .btns button:active { transform: none; } }
+.live { border-left: 6px solid var(--tc, var(--accent)); }
+.live-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.code { font-family: var(--display); font-weight: 800; font-size: 1.6rem; letter-spacing: .12em; }
+.conn { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--muted); }
+.conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--t3); }
+.conn.off::before { background: var(--danger); }
+.solid { padding: 11px 14px; border-radius: 10px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pick button { padding: 18px 10px; border-radius: 12px; border: 2px solid var(--tc); background: var(--surface); font-family: var(--display); font-weight: 800; font-size: 1.3rem; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pick .dot, .link-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
+.link-row { display: flex; align-items: center; gap: 8px; }
+.link-row span.n { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.ghost, a.solid { color: inherit; text-decoration: none; display: inline-block; }
+a.solid { color: var(--accent-fg); }
+h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; }
+.date { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+[hidden] { display: none !important; }
+/* v2: wide stations, clock, AMRAP pair, EMOM minute grid, workout card */
+.st.wide { grid-column: 1 / -1; }
+.btns.two { grid-template-columns: 1fr 1fr; }
+.btns.one { grid-template-columns: 1fr; }
+.btns button:disabled { opacity: .4; cursor: default; transform: none; }
+.center { text-align: center; justify-content: center; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pair > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.clockbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.clock-val { font-family: var(--display); font-weight: 800; font-size: 2rem; font-variant-numeric: tabular-nums; line-height: 1; }
+.mins { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+.mins button { border: 1px solid var(--line); border-radius: 10px; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.mins b { font-size: .7rem; color: var(--muted); font-weight: 600; }
+.mins span { font-size: .68rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mins i { font-style: normal; font-family: var(--display); font-weight: 800; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.mins button.sel { border: 2px solid var(--tc); }
+.mins button.now { background: var(--press); }
+.mins button.ok i { color: var(--t3); }
+.mins button.miss i { color: var(--danger); }
+.mins button.later { opacity: .55; }
+.gbar { display: flex; gap: 2px; margin-top: 4px; }
+.gbar i { flex: 1; height: 6px; min-width: 2px; border-radius: 2px; background: var(--line); }
+.gbar i.ok { background: var(--t3); }
+.gbar i.miss { background: var(--danger); }
+.min-panel { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+select.date { max-width: 100%; }
+/* Workout list and paste box */
+.w-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 10px; }
+.w-row .n { flex: 1 1 200px; min-width: 0; }
+.w-row .n b { display: block; }
+.w-row .n span { display: block; font-size: .8rem; color: var(--muted); line-height: 1.4; }
+.paste { font: .85rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); resize: vertical; }
+.err { color: var(--danger); font-size: .85rem; margin: 0; }
+/* Personal bests, QR codes, big screen */
+.pb { display: inline-block; margin-left: .3em; padding: .1em .45em; border-radius: 999px; background: var(--t5); color: #16191a; font-family: var(--body); font-size: .62rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; vertical-align: middle; line-height: 1.3; }
+.pb.rec { background: var(--accent); color: var(--accent-fg); }
+.qr { background: #fff; padding: 10px; border-radius: 10px; line-height: 0; }
+.qr svg { width: 100%; height: auto; display: block; }
+.qr.big { width: min(78vw, 340px); margin: 0 auto; }
+.qr-pick { display: flex; gap: 6px; flex-wrap: wrap; }
+.qr-pick button { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); font-weight: 600; font-size: .9rem; }
+.qr-pick button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+body.screen .wrap { max-width: none; padding: 2.5vw 3vw; }
+body.screen header { display: none; }
+#screen { display: flex; flex-direction: column; gap: 2.5vw; }
+.scr-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 2vw; flex-wrap: wrap; }
+.scr-title { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 5vw, 5.5rem); text-transform: uppercase; line-height: .9; }
+.scr-sub { color: var(--muted); font-size: clamp(1rem, 1.6vw, 1.8rem); font-weight: 600; margin: .3em 0 0; }
+.scr-clock { font-family: var(--display); font-weight: 800; font-size: clamp(2.5rem, 7vw, 8rem); font-variant-numeric: tabular-nums; line-height: .9; }
+.scr-main { display: grid; grid-template-columns: 1fr auto; gap: 3vw; align-items: start; }
+.scr-tbl { font-size: clamp(1.1rem, 2.4vw, 2.8rem); background: var(--surface); border-radius: 14px; }
+.scr-tbl th, .scr-tbl td { padding: .45em .5em; }
+.scr-tbl th { font-size: .42em; }
+.scr-tbl th:nth-child(2), .scr-tbl td:nth-child(2) { text-align: left; }
+.scr-tbl td { font-family: var(--display); font-weight: 800; }
+.scr-tbl td.pts { font-size: 1.3em; }
+.scr-tbl .tname { font-family: var(--body); font-weight: 600; }
+.scr-tbl .place { font-family: var(--display); font-weight: 800; font-size: 1.3em; text-align: center; width: 1.6em; }
+.scr-tbl .tname { gap: .35em; }
+.scr-tbl .tname .dot { width: .55em; height: .55em; }
+.scr-tbl .rk { font-size: .45em; }
+.scr-tbl .pb { font-size: .38em; }
+.glitter { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+.glitter-msg { position: fixed; left: 50%; top: 40%; z-index: 51; pointer-events: none; white-space: nowrap; font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 9vw, 7rem); text-transform: uppercase; color: var(--fg); text-shadow: 0 0 .3em var(--bg), 0 0 .6em var(--bg); animation: glitter-pop 2.8s ease forwards; }
+@keyframes glitter-pop { 0% { transform: translate(-50%, -50%) scale(.6); opacity: 0; } 12% { transform: translate(-50%, -50%) scale(1.06); opacity: 1; } 20% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .glitter-msg { animation-duration: 2.8s; animation-name: glitter-fade; transform: translate(-50%, -50%); } @keyframes glitter-fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } } }
+#title, .scr-title { -webkit-user-select: none; user-select: none; }
+.scr-join { background: var(--surface); border-radius: 14px; padding: 1.2vw; text-align: center; width: clamp(160px, 17vw, 320px); }
+@media (max-width: 800px) { .scr-main { grid-template-columns: 1fr; } .scr-join { display: none; } }
+</style>
+</head><body>
+
+<div class="wrap">
+  <section id="screen" hidden></section>
+
+  <header>
+    <h1 id="title">Team Output<small id="subtitle"></small></h1>
+    <div class="seg" role="group" aria-label="Round" id="roundSeg"></div>
+  </header>
+
+  <section class="card live" id="live" hidden></section>
+
+  <section class="card" id="qrCard" hidden></section>
+
+  <section class="card" id="picker" hidden>
+    <h2>Which team are you?</h2>
+    <div class="pick" id="pickList"></div>
+    <div class="actions"><button class="ghost" data-role="trainer">I'm the trainer</button></div>
+  </section>
+
+  <nav class="teams" id="teams" aria-label="Teams"></nav>
+
+  <section class="board" id="board" aria-live="polite"></section>
+
+  <section class="card" id="standCard">
+    <h2>Standings</h2>
+    <div class="tbl-wrap"><table id="standings"></table></div>
+    <p class="note" id="standNote"></p>
+  </section>
+
+  <!-- Everything the trainer needs now and then, closed by default so the scoreboard stays on the first screen. -->
+  <details class="tools" id="tools" hidden>
+    <summary id="toolsLabel">Trainer tools</summary>
+    <div class="tools-body">
+      <section class="card" id="linksCard" hidden></section>
+
+      <section class="card" id="sessionsCard" hidden></section>
+
+      <section class="card" id="historyCard" hidden></section>
+
+      <section class="card" id="workoutCard" hidden></section>
+
+      <section class="card" id="setupCard">
+        <h2>Teams</h2>
+        <div id="setup" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div class="actions">
+          <button class="ghost" id="addTeam">Add team</button>
+          <span id="resetArea"><button class="ghost danger" id="reset">Reset all counts</button></span>
+        </div>
+      </section>
+    </div>
+  </details>
+</div>
+
+<script type="module">
+// ======================= WORKOUTS =======================
+// Everything about a class format lives here. For a new month: add a workout to WORKOUTS (or edit one)
+// and point DEFAULT_WORKOUT at it. New sessions start with DEFAULT_WORKOUT, and the trainer can switch a
+// session to any workout in the list (or a pasted one) from the Workouts card. Each session saves a copy of its workout,
+// so editing this list later never changes past results.
+//
+//   id         letters, digits and dashes (max 20)
+//   name       shown as the page title
+//   place      optional, shown in the line under the title
+//   teams      how many teams a fresh phone starts with; teamSize is only shown in the subtitle
+//   rounds     1 to 10; every station is done once per round and scored over all rounds
+//   stations   one or more, each with an id (max 8 lowercase letters/digits), a name, a type and info:
+//     count  max reps, cals or meters (today's format). unit, steps (the + buttons)
+//     time   for time. cap in seconds. totalReps is optional: with it a capped team scores the cap plus
+//            one second per missing rep; without it capped teams rank behind all finishers, by reps
+//     amrap  rounds plus reps. cap in seconds (shown as a countdown). With repsPerRound, teams only count
+//            reps and full rounds roll over by themselves
+//     emom   every minute on the minute. minutes (max 60), moves (rotate each minute),
+//            measure "done" (a grid of minutes: they tick themselves off as the clock passes them, a team
+//            only taps a missed one) or "reps" (count reps each minute). An EMOM is a team's own progress
+//            grid and isn't ranked, unless the station has scored: true
+// Scoring: each station (except unscored EMOMs) ranks the teams; points add up the ranks over all stations and the lowest wins.
+// Mixing types in one workout works the same way (for example an EMOM part and a for-time part).
+
+// Sessions saved before workouts existed have no copy of their workout and use this one,
+// so keep it exactly as it is. To change Team Output, add a new entry with a new id.
+const TEAM_OUTPUT = {
+  id: "team-output", name: "Team Output", place: "Thursday Athletic", teams: 4, teamSize: 3, rounds: 2,
+  stations: [
+    { id: "erg", name: "Erg",       type: "count", unit: "cals",   steps: [1, 5, 10],    info: "90s/person · Ski, Row, Bike" },
+    { id: "wb",  name: "Wallballs", type: "count", unit: "reps",   steps: [1, 5, 10],    info: "5 min AMRAP · max 20/ball" },
+    { id: "run", name: "Run",       type: "count", unit: "meters", steps: [10, 50, 100], info: "5 min · +1% incline/min" },
+    { id: "bbj", name: "BBJs",      type: "count", unit: "lanes",  steps: [1, 2, 5],     info: "2 work · 1 rest · 6 m lane" },
+  ],
+};
+
+// Other workouts come from the trainer: pasted in the Workouts card (under Trainer tools) and shared
+// with every phone. Real Kaifu Lodge cards written in this format are in card-examples/README.md.
+const WORKOUTS = [TEAM_OUTPUT];
+
+const DEFAULT_WORKOUT = "team-output";
+// ===================== END WORKOUTS =====================
+
+// Live scoring: the firebaseConfig block from the Firebase console. With null the app runs on one phone only.
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDBSdlwWWlIypP7_EiDb6FrHmpH_ElxnzQ",
+  authDomain: "team-output-counter.firebaseapp.com",
+  databaseURL: "https://team-output-counter-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "team-output-counter",
+  storageBucket: "team-output-counter.firebasestorage.app",
+  messagingSenderId: "112958855502",
+  appId: "1:112958855502:web:2cd59244a8b4815ffba61f"
+};
+const FB = "https://www.gstatic.com/firebasejs/10.12.2/";
+
+const KEY = "team-output-live-v2"; // own key: both apps share the iamsartor.github.io address, so they must not share saved data
+// v1 is the key of the app before workouts. It stays untouched so that version still works on the same phone (beta folder);
+// a phone's first visit starts from it, so team ids and names carry over.
+const OLD_KEY = "team-output-live-v1";
+const COLORS = 6;
+const TYPES = { count: "max", time: "for time", amrap: "rounds + reps", emom: "EMOM" };
+
+// Checks a workout (from this file or a saved session) and fills in defaults. Returns null if it's unusable.
+function normWorkout(w) {
+  if (!w || typeof w !== "object" || !Array.isArray(w.stations)) return null;
+  const int = (x, lo, hi, d) => Number.isFinite(+x) && x !== null && x !== "" ? Math.max(lo, Math.min(hi, Math.round(+x))) : d;
+  const stations = w.stations.filter(s => s && /^[a-z0-9]{1,8}$/.test(s.id) && TYPES[s.type || "count"]).map(s => {
+    const steps = Array.isArray(s.steps) && s.steps.length ? s.steps.slice(0, 3).map(n => int(n, 1, 1000, 1)) : [1, 5, 10];
+    const o = { id: s.id, name: String(s.name || s.id).slice(0, 30), type: s.type || "count", info: String(s.info || "").slice(0, 120), steps };
+    if (o.type === "count") o.unit = String(s.unit || "reps").slice(0, 12);
+    if (o.type === "time" || o.type === "amrap") o.cap = int(s.cap === undefined ? 0 : parseCap(s.cap), 0, 36000, 0);
+    if (o.type === "time" && s.totalReps) o.totalReps = int(s.totalReps, 1, 100000, 0);
+    // A team goal ("120 team reps", "2000 m"): teams count towards it and the time is taken when they reach it.
+    if (o.type === "time" && s.target) { o.target = int(s.target, 1, 100000, 0); o.unit = String(s.unit || "reps").slice(0, 12); o.totalReps = o.totalReps || o.target; }
+    if (o.type === "amrap" && s.repsPerRound) o.repsPerRound = int(s.repsPerRound, 1, 10000, 0);
+    if (o.type === "emom") {
+      o.minutes = int(s.minutes, 1, 60, 10);
+      o.measure = s.measure === "done" ? "done" : "reps";
+      o.scored = s.scored === true || s.scored === "true";
+      o.moves = (Array.isArray(s.moves) && s.moves.length ? s.moves : [o.name]).slice(0, 12).map(m => String(m).slice(0, 40));
+    }
+    return o;
+  });
+  if (!stations.length || new Set(stations.map(s => s.id)).size !== stations.length) return null;
+  return {
+    id: String(w.id || "custom").replace(/[^a-z0-9-]/gi, "").slice(0, 20) || "custom",
+    name: String(w.name || "Workout").slice(0, 40), place: String(w.place || "").slice(0, 40),
+    teams: int(w.teams, 1, 12, 4), teamSize: int(w.teamSize, 1, 20, 3), rounds: int(w.rounds, 1, 10, 1), stations,
+  };
+}
+const parseWorkout = s => { try { return normWorkout(JSON.parse(s)); } catch { return null; } };
+const LIBRARY = WORKOUTS.map(normWorkout).filter(Boolean);
+const LEGACY = normWorkout(TEAM_OUTPUT);
+// The trainer's own workouts, added in the app. Live they are shared through the database (workouts/<id>),
+// so every trainer phone has them; on a phone on its own they stay on that phone.
+const SAVED_KEY = "team-output-live-workouts";
+let saved = {};
+try { for (const [id, j] of Object.entries(JSON.parse(localStorage.getItem(SAVED_KEY)) || {})) { const w = parseWorkout(j); if (w) saved[id] = w; } } catch {}
+const savedList = () => Object.values(saved).sort((a, b) => a.name.localeCompare(b.name));
+const isBuiltIn = id => LIBRARY.some(w => w.id === id);
+const byId = id => LIBRARY.find(w => w.id === id) || saved[id];
+const DEFAULT = LIBRARY.find(w => w.id === DEFAULT_WORKOUT) || LIBRARY[0];
+const sameWorkout = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+let W; // the workout on screen
+let editing = null; // the field being typed into
+const roundList = () => [...Array(W.rounds).keys()];
+function blankCounts() { return roundList().map(() => ({})); }
+const newId = () => Math.random().toString(36).slice(2, 9);
+function newTeam(n) { return { id: newId(), name: "Team " + n, counts: blankCounts() }; }
+function defaultState() { W = DEFAULT; return { round: 0, active: 0, workout: DEFAULT, clocks: {}, teams: [...Array(DEFAULT.teams)].map((_, i) => newTeam(i + 1)) }; }
+
+let state;
+try { state = JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY)) || defaultState(); } catch { state = defaultState(); }
+if (!state.teams || !state.teams.length) state = defaultState();
+// Phones that counted before v2 have no workout saved: that was always Team Output.
+setWorkout(normWorkout(state.workout) || LEGACY);
+state.clocks = state.clocks || {};
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+
+// Switches the screen to a workout and fits every team's counts to its rounds.
+function setWorkout(w) {
+  if (W && W !== w && !sameWorkout(W, w)) editing = null;
+  W = w; state.workout = w;
+  state.round = Math.min(state.round || 0, W.rounds - 1);
+  for (const t of state.teams) t.counts = roundList().map(r => ({ ...(Array.isArray(t.counts) && t.counts[r] || {}) }));
+}
+
+// Live sessions. Each day gets its own session, named by date (2026-10-16), plus 2026-10-16-2 and so on
+// for extra sessions. "current" points at the newest one, so the plain link always opens today's session
+// and nothing ever needs resetting. Team ids carry over, so a phone remembers its team week to week.
+// view: "local" (one phone, like v1.0), "wait", "missing", "pick", "trainer", "team", "error".
+const params = new URLSearchParams(location.search);
+const forcedEvent = (params.get("e") || "").replace(/[^0-9-]/g, "");
+const screenMode = params.has("screen"); // the big-screen leaderboard
+const ROLE_KEY = "team-output-live-role";
+// Match the database rules: sessions dated 2025 to 2029, at most 9 per day.
+const FIRST_DAY = "2025-01-01", MAX_PER_DAY = 9;
+let live = null, eventId = null, stopEvent = null, latest = null, connected = true, liveMsg = "", sessionList = null;
+let liveClocks = {}, serverOffset = 0;
+let view = !FIREBASE_CONFIG || params.has("local") ? "local" : "wait";
+const getRole = () => { try { return localStorage.getItem(ROLE_KEY); } catch { return null; } };
+const setRole = r => { try { r ? localStorage.setItem(ROLE_KEY, r) : localStorage.removeItem(ROLE_KEY); } catch {} };
+if (params.get("team")) setRole(params.get("team"));
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function eventLabel(id) {
+  const day = new Date(id.slice(0, 10) + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return id.length > 10 ? `${day} · extra ${id.slice(11)}` : day;
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tc = i => `--tc: var(--t${(i % COLORS) + 1})`;
+const val = (t, r, key) => t.counts[r]?.[key] || 0;
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+// "12:34", "12.34" or "12 34" is minutes and seconds; a plain number is minutes.
+function parseTime(str) {
+  const m = String(str).trim().match(/^(\d{1,3})(?:[:., ](\d{1,2}))?$/);
+  return m ? Math.min(100000, +m[1] * 60 + (m[2] === undefined ? 0 : +m[2])) : null;
+}
+// A time cap from a workout: "18:00", "18 min", "18'" or seconds. Plain numbers under 60 can only mean minutes.
+function parseCap(x) {
+  if (typeof x === "number") return x > 0 && x < 60 ? x * 60 : x;
+  const m = String(x).trim().match(/^(\d{1,3})\s*(?:min(?:ute[ns]?)?\.?|m|')$/i);
+  return m ? +m[1] * 60 : parseTime(x);
+}
+const baseUrl = () => location.origin + location.pathname;
+
+// Each station's numbers are stored as flat fields per team and round: "erg" for a count station,
+// "chip_t" (seconds), "chip_c" (1 = time cap) and "chip_r" (reps at the cap) for time,
+// "amrap_n" (rounds) and "amrap_r" (reps) for AMRAP, "emom_m1".."emom_m60" for each EMOM minute.
+const stationOf = key => W.stations.find(s => s.id === key.split("_")[0]);
+
+// A station's result for one team over all rounds: a sort key (lower is better) and the text to show.
+function score(s, t, w = W) {
+  const R = [...Array(w.rounds).keys()], sum = f => R.reduce((a, r) => a + val(t, r, f), 0);
+  if (s.type === "count") { const n = sum(s.id); return { key: [-n], text: String(n) }; }
+  if (s.type === "amrap") {
+    const n = sum(s.id + "_n"), m = sum(s.id + "_r");
+    return { key: s.repsPerRound ? [-(n * s.repsPerRound + m)] : [-n, -m], text: `${n} + ${m}` };
+  }
+  if (s.type === "emom") {
+    let n = 0;
+    for (const r of R) for (let m = 1; m <= s.minutes; m++) { const x = val(t, r, `${s.id}_m${m}`); n += s.measure === "done" ? +(x === 1) : x; }
+    return { key: [-n], text: s.measure === "done" ? `${n}/${s.minutes * w.rounds}` : String(n) };
+  }
+  let secs = 0, capped = 0, reps = 0, missing = 0, progress = 0;
+  for (const r of R) {
+    const T = val(t, r, s.id + "_t");
+    if (val(t, r, s.id + "_c")) {
+      const done = val(t, r, s.id + "_r");
+      capped++; reps += done; secs += s.cap || T;
+      if (s.totalReps) secs += Math.max(0, s.totalReps - done);
+    } else if (T) secs += T;
+    else { missing++; if (s.target) progress += val(t, r, s.id + "_r"); }
+  }
+  // Teams still working towards a goal rank by how far they've got.
+  if (missing === R.length) return progress ? { key: [missing, 0, -progress], text: `${progress}/${s.target * R.length} ${s.unit}` } : { key: [Infinity], text: "–" };
+  const text = capped && R.length === 1 ? `Cap · ${reps}${s.totalReps ? "/" + s.totalReps : ""} ${s.unit || "reps"}` : fmt(secs) + (capped ? ` · ${capped} capped` : "");
+  return { key: s.totalReps ? [missing, secs, -progress] : [missing, capped, secs, -reps], text };
+}
+// Stations that count for the ranking. An EMOM is a progress grid for each team unless it's marked scored.
+const ranked = s => s.type !== "emom" || s.scored;
+const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0) ? -1 : 1; return 0; };
+const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c).some(x => x)));
+
+// The shared clock for timed stations: the trainer starts it per round, every phone shows it.
+// Live it's stored as the server's start time, so phones with wrong clocks still agree.
+const now = () => Date.now() + (live ? serverOffset : 0);
+const clockStart = r => (live ? liveClocks : state.clocks)["r" + r] || 0;
+const timed = () => W.stations.some(s => s.type !== "count");
+const clockEnd = () => Math.max(0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
+const elapsed = r => clockStart(r) ? Math.max(0, (now() - clockStart(r)) / 1000) : 0;
+function clockText() {
+  const end = clockEnd(), el = end ? Math.min(elapsed(state.round), end) : elapsed(state.round);
+  if (W.stations.every(s => s.type === "amrap") && end) return `${fmt(end - el)} left`;
+  return fmt(el) + (end ? ` / ${fmt(end)}` : "");
+}
+const minuteNow = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60) + 1) : 0;
+const canRunClock = () => view === "local" || (view === "trainer" && eventId && eventId.startsWith(today()));
+function startClock() {
+  const r = state.round;
+  if (live) return live.fb.set(path("clock", "r" + r), live.fb.serverTimestamp());
+  state.clocks["r" + r] = Date.now();
+}
+function resetClock() {
+  if (live) return live.fb.set(path("clock", "r" + state.round), null);
+  delete state.clocks["r" + state.round];
+}
+
+async function connect() {
+  const [app, fb] = await Promise.all([import(FB + "firebase-app.js"), import(FB + "firebase-database.js")]);
+  return { fb, db: fb.getDatabase(app.initializeApp(FIREBASE_CONFIG)) };
+}
+const path = (...parts) => live.fb.ref(live.db, ["events", eventId, ...parts].join("/"));
+
+async function initLive() {
+  if (!FIREBASE_CONFIG) { view = "error"; liveMsg = "Live scoring isn't switched on in this copy of the app yet."; return renderAll(); }
+  try { live = await connect(); }
+  catch { view = "error"; liveMsg = "Couldn't reach the live scoreboard. Check the connection and reload."; return renderAll(); }
+  live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); renderLive(); });
+  live.fb.onValue(live.fb.ref(live.db, ".info/serverTimeOffset"), s => { serverOffset = s.val() || 0; });
+  live.fb.onValue(live.fb.ref(live.db, "workouts"), s => {
+    saved = {};
+    for (const [id, j] of Object.entries(s.val() || {})) { const w = parseWorkout(j); if (w) saved[id] = { ...w, id }; }
+    renderWorkout();
+    if (view === "missing" && document.activeElement?.id !== "startPick") renderLive();
+  });
+  if (forcedEvent) {
+    live.fb.get(live.fb.ref(live.db, "current")).then(s => { latest = s.val(); renderSessions(); }).catch(() => {});
+    return openEvent(forcedEvent);
+  }
+  live.fb.onValue(live.fb.ref(live.db, "current"), s => { latest = s.val(); followToday(); });
+  // A page left open since last week moves to today's session when the phone wakes up.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") followToday(); });
+}
+
+function followToday() {
+  if (forcedEvent) return;
+  const t = today();
+  openEvent(typeof latest === "string" && latest.startsWith(t) ? latest : t);
+}
+
+function openEvent(id) {
+  if (id === eventId) return;
+  flush(); pending.clear(); editing = null;
+  if (stopEvent) stopEvent();
+  eventId = id; view = "wait"; renderAll();
+  stopEvent = live.fb.onValue(path(), snap => applyRemote(snap.val()),
+    () => { view = "error"; liveMsg = "This session can't be opened. Check the connection and reload."; renderAll(); });
+}
+
+function applyRemote(v) {
+  if (!v || !v.teams) { view = "missing"; if (getRole() === "trainer" && !sessionList) loadSessions(); return renderAll(); }
+  if (view === "wait") state.round = 0;
+  if (!allEvents && !historyLoading) loadSessions();
+  // Sessions from before v2 have no workout saved and were always Team Output.
+  setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
+  liveClocks = v.clock || {};
+  const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
+  state.teams = ids.map(id => ({ id, name: v.teams[id].name, counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
+  // Taps not yet sent win over what the server has, so the counter never jumps back.
+  for (const [k, x] of pending) {
+    const [id, r, key] = k.split("/"), t = state.teams.find(t => t.id === id);
+    if (t && t.counts[+r.slice(1)]) t.counts[+r.slice(1)][key] = x;
+  }
+  const role = getRole(), mine = ids.indexOf(role);
+  if (screenMode) {
+    view = "screen";
+    // The screen shows the clock of the round that started last.
+    state.round = roundList().reduce((best, r) => clockStart(r) > clockStart(best) ? r : best, 0);
+  }
+  else if (role === "trainer") view = "trainer";
+  else if (mine >= 0) { view = "team"; state.active = mine; }
+  else view = "pick";
+  state.active = Math.min(state.active, state.teams.length - 1);
+  if (!editing) renderBoard();
+  renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
+  if (!(document.activeElement && document.activeElement.dataset.name !== undefined)) renderSetup();
+  save();
+}
+
+// Live counts are sent as totals about a second after the last tap: ten quick taps become one write,
+// and a lost write can't make scores drift because the next one carries the full total.
+const pending = new Map();
+let flushTimer = null;
+function queue(i, key, v) {
+  const t = state.teams[i];
+  t.counts[state.round][key] = v;
+  pending.set(`${t.id}/r${state.round}/${key}`, v);
+  clearTimeout(flushTimer); flushTimer = setTimeout(flush, 1000);
+}
+function flush() {
+  clearTimeout(flushTimer);
+  if (!live || !pending.size) return;
+  const sent = new Map(pending);
+  live.fb.update(path(), Object.fromEntries([...sent].map(([k, v]) => ["counts/" + k, v])))
+    .then(() => { for (const [k, v] of sent) if (pending.get(k) === v) pending.delete(k); })
+    .catch(() => { flushTimer = setTimeout(flush, 3000); });
+}
+// Send right away when the phone is locked or the tab is closed.
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+addEventListener("pagehide", flush);
+
+// Every change goes through these, so the same buttons work on one phone or in a live session.
+function setValue(i, key, v) {
+  v = Math.max(0, Math.min(100000, Math.round(v) || 0));
+  if (live) return queue(i, key, v);
+  state.teams[i].counts[state.round][key] = v;
+}
+function bump(i, key, d) {
+  const get = k => val(state.teams[i], state.round, k), s = stationOf(key);
+  if (s && s.type === "amrap" && key === s.id + "_n" && d > 0) setValue(i, s.id + "_r", 0);
+  if (s && s.type === "amrap" && key === s.id + "_r" && s.repsPerRound) {
+    // Reps roll over into full rounds, so teams only have to count reps.
+    const total = get(s.id + "_n") * s.repsPerRound + get(key) + d;
+    setValue(i, s.id + "_n", Math.floor(Math.max(0, total) / s.repsPerRound));
+    return setValue(i, key, Math.max(0, total) % s.repsPerRound);
+  }
+  if (s && s.type === "time" && s.target && key === s.id + "_r" && d > 0) {
+    // Reaching the team goal takes the time, when the clock runs.
+    const v = get(key) + d;
+    setValue(i, key, v);
+    if (v >= s.target && !get(s.id + "_t") && !get(s.id + "_c") && clockStart(state.round)) stationAction(i, "fin", s.id);
+    return;
+  }
+  setValue(i, key, get(key) + d);
+}
+// Time stations: finish on the clock, hit the time cap, or clear.
+function stationAction(i, act, sid) {
+  const s = W.stations.find(s => s.id === sid); if (!s) return;
+  if (act === "fin") {
+    const secs = Math.round(elapsed(state.round));
+    if (s.cap && secs >= s.cap) return stationAction(i, "cap", sid);
+    setValue(i, sid + "_t", secs); setValue(i, sid + "_c", 0);
+  } else if (act === "cap") { setValue(i, sid + "_c", 1); setValue(i, sid + "_t", s.cap); }
+  else if (act === "clear") { setValue(i, sid + "_t", 0); setValue(i, sid + "_c", 0); setValue(i, sid + "_r", 0); }
+}
+function rename(i, name) {
+  if (live) return live.fb.set(path("teams", state.teams[i].id, "name"), name.slice(0, 24));
+  state.teams[i].name = name;
+}
+function addTeam() {
+  if (live) return live.fb.set(path("teams", newId()), { name: "Team " + (state.teams.length + 1), order: Date.now() });
+  state.teams.push(newTeam(state.teams.length + 1)); state.active = state.teams.length - 1;
+}
+function removeTeam(i) {
+  if (live) { const id = state.teams[i].id; for (const k of [...pending.keys()]) if (k.startsWith(id + "/")) pending.delete(k); return live.fb.update(path(), { ["teams/" + id]: null, ["counts/" + id]: null }); }
+  state.teams.splice(i, 1); state.active = Math.min(state.active, state.teams.length - 1);
+}
+function resetAll() {
+  state.round = 0;
+  if (live) { pending.clear(); clearTimeout(flushTimer); return live.fb.update(path(), { counts: null, clock: null }); }
+  state.teams.forEach(t => t.counts = blankCounts()); state.clocks = {};
+}
+// Switches the session (or this phone) to another workout. Scores and clocks start over.
+function useWorkout(w) {
+  editing = null;
+  if (live) { pending.clear(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: JSON.stringify(w), counts: null, clock: null }); }
+  setWorkout(w); state.teams.forEach(t => t.counts = blankCounts()); state.clocks = {};
+}
+
+// The trainer's list of all sessions, newest first, for switching between them.
+// It also brings in every session's scores for history and personal bests.
+let historyLoading = false;
+function loadSessions() {
+  historyLoading = true;
+  live.fb.get(live.fb.ref(live.db, "events"))
+    .then(s => {
+      allEvents = s.val() || {}; eventsVersion++;
+      sessionList = Object.keys(allEvents).sort().reverse();
+      renderSessions(); renderHistory(); renderStandings(); renderScreen(); if (!editing) renderBoard();
+    })
+    .catch(() => {})
+    .finally(() => historyLoading = false);
+}
+// A session from today becomes everyone's current one; an older one opens on this phone only.
+function switchSession(id) {
+  if (id.startsWith(today())) {
+    live.fb.set(live.fb.ref(live.db, "current"), id);
+    if (forcedEvent) location.href = baseUrl(); else { latest = id; openEvent(id); }
+  } else location.href = baseUrl() + "?e=" + id;
+}
+const newSession = (w = DEFAULT) => ({ created: Date.now(), workout: JSON.stringify(w),
+  teams: Object.fromEntries(state.teams.map((t, i) => [t.id, { name: t.name.slice(0, 24), order: i }])) });
+// Adds a session for an earlier date (for results from paper) and opens it on this phone only.
+async function addPastSession(date, btn) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= today()) { $("pastMsg").textContent = "Pick a date before today."; return; }
+  if (date < FIRST_DAY) { $("pastMsg").textContent = "Pick a date from 2025 on."; return; }
+  btn.disabled = true;
+  try {
+    let id = date;
+    for (let n = 2; (await live.fb.get(live.fb.ref(live.db, "events/" + id))).exists(); n++) {
+      if (n > MAX_PER_DAY) { btn.disabled = false; $("pastMsg").textContent = `That day already has ${MAX_PER_DAY} sessions.`; return; }
+      id = `${date}-${n}`;
+    }
+    await live.fb.set(live.fb.ref(live.db, "events/" + id), newSession());
+    location.href = baseUrl() + "?e=" + id;
+  } catch { btn.disabled = false; $("pastMsg").textContent = "Couldn't add it. Check the connection and try again."; }
+}
+
+// Deletes the session on screen with all its scores. Phones on it fall back to today's session.
+async function deleteSession() {
+  const id = eventId; pending.clear(); clearTimeout(flushTimer);
+  await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: null, ...(latest === id ? { current: null } : {}) });
+  sessionList = null; loadSessions();
+  if (forcedEvent) location.href = baseUrl(); else { latest = latest === id ? null : latest; eventId = null; followToday(); }
+}
+
+// Starts today's session, or an extra one the same day, with the teams from the last session this phone
+// saw and the workout picked on the start screen (extra sessions get the default one).
+async function startEvent(btn, extra) {
+  btn.disabled = true; btn.textContent = "Starting…";
+  try {
+    let id = today();
+    if (extra) startPick = DEFAULT.id;
+    if (extra) for (let n = 2; ; n++) {
+      if (n > MAX_PER_DAY) throw new Error("full");
+      id = `${today()}-${n}`; if (!(await live.fb.get(live.fb.ref(live.db, "events/" + id))).exists()) break;
+    }
+    setRole("trainer");
+    await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: newSession(byId(startPick) || DEFAULT), current: id });
+    sessionList = null; loadSessions();
+    if (forcedEvent) location.href = baseUrl(); else { latest = id; openEvent(id); }
+  } catch (e) {
+    btn.disabled = false; btn.textContent = extra ? "Start extra session" : "Start today's session";
+    liveMsg = e.message === "full" ? `There are already ${MAX_PER_DAY} sessions today, which is the most a day can have.` : "Couldn't start the session. Check the connection and try again.";
+    renderLive();
+  }
+}
+
+async function share(url, btn) {
+  try {
+    if (navigator.share) await navigator.share({ title: W.name, url });
+    else { await navigator.clipboard.writeText(url); btn.textContent = "Copied"; setTimeout(() => btn.textContent = btn.dataset.label, 1500); }
+  } catch {}
+}
+
+function renderHeader() {
+  const bits = [W.place, `${W.teams} teams of ${W.teamSize}`, W.rounds > 1 ? `${W.rounds} rounds` : ""].filter(Boolean);
+  $("title").firstChild.textContent = W.name;
+  $("subtitle").textContent = bits.join(" · ");
+  document.title = W.name + " Live";
+}
+
+function renderRound() {
+  const seg = $("roundSeg");
+  if (seg.children.length !== W.rounds) seg.innerHTML = roundList().map(r => `<button data-round="${r}">Runde ${r + 1}</button>`).join("");
+  [...seg.children].forEach((b, r) => b.setAttribute("aria-pressed", state.round === r));
+}
+
+function renderTeams() {
+  $("teams").innerHTML = state.teams.map((t, i) =>
+    `<button style="${tc(i)}" data-team="${i}" aria-pressed="${i === state.active}"><span class="dot"></span>${esc(t.name)}</button>`).join("");
+}
+
+// The pieces stations are built from.
+function bigVal(key, shown, label, time = false, inputVal = shown) {
+  return editing === key
+    ? `<input class="st-input" id="edit" data-key="${key}" ${time ? `type="text" inputmode="decimal" placeholder="m:ss"` : `type="number" inputmode="numeric" min="0"`} value="${inputVal}" aria-label="${esc(label)}">`
+    : `<button class="st-val" data-edit="${key}" aria-label="${esc(label)}: ${shown}. Tap to type ${time ? "a time" : "a number"}">${shown}</button>`;
+}
+const stepBtns = (key, steps) => `
+  <div class="btns">${steps.map(n => `<button class="plus" data-k="${key}" data-d="${n}">+${n}</button>`).join("")}</div>
+  <div class="minus-row"><button data-k="${key}" data-d="${-steps[0]}">Undo &minus;${steps[0]}</button></div>`;
+const top = (name, unit) => `<div class="st-top"><span class="st-name">${esc(name)}</span><span class="st-unit">${esc(unit)}</span></div>`;
+const info = s => s.info ? `<div class="st-info">${esc(s.info)}</div>` : "";
+const totalLine = (s, t) => W.rounds > 1 ? `<div class="st-other">Total over all rounds: ${score(s, t).text}</div>` : "";
+
+const emomSel = {}, lastMinute = {};
+const STATION = {
+  count: (s, t, r) => `
+    <div class="st">${top(s.name, s.unit)}${info(s)}
+      ${bigVal(s.id, val(t, r, s.id), `${s.name} ${s.unit}`)}
+      ${stepBtns(s.id, s.steps)}
+      ${W.rounds > 1 ? `<div class="st-other">${roundList().filter(x => x !== r).map(x => `Runde ${x + 1}: ${val(t, x, s.id)}`).join(" · ")} · Total ${score(s, t).text}</div>` : ""}
+    </div>`,
+  time: (s, t, r) => {
+    const T = val(t, r, s.id + "_t"), capped = val(t, r, s.id + "_c"), running = clockStart(r);
+    const label = `${s.name} time`;
+    const body = capped ? `
+        <div class="st-info center">Time cap${s.cap ? " " + fmt(s.cap) : ""}. ${s.target ? `${s.unit} done of ${s.target}` : `Reps done${s.totalReps ? " of " + s.totalReps : ""}`}:</div>
+        ${bigVal(s.id + "_r", val(t, r, s.id + "_r"), `${s.name} reps at the time cap`)}
+        ${stepBtns(s.id + "_r", s.steps)}
+        <div class="minus-row"><button data-act="clear:${s.id}">Clear result</button></div>`
+      : T ? `
+        ${bigVal(s.id + "_t", fmt(T), label, true)}
+        ${s.target ? `<div class="st-info center">Goal of ${s.target} ${esc(s.unit)} reached</div>` : ""}
+        <div class="minus-row"><button data-act="clear:${s.id}">Clear result</button></div>`
+      : s.target ? `
+        ${bigVal(s.id + "_r", val(t, r, s.id + "_r"), `${s.name} ${s.unit} so far`)}
+        <div class="st-other">of ${s.target} ${esc(s.unit)}</div>
+        ${stepBtns(s.id + "_r", s.steps)}
+        <div class="btns two"><button class="plus" data-act="fin:${s.id}" ${running ? "" : "disabled"}>Finished</button>${s.cap ? `<button data-act="cap:${s.id}">Time cap</button>` : ""}</div>
+        <div class="st-info center">${running ? `The time is taken when the team reaches ${s.target} ${esc(s.unit)}.` : "Waiting for the clock. Or tap a number to type it."}</div>`
+      : `
+        ${bigVal(s.id + "_t", "–:–", label, true, "")}
+        <div class="btns two"><button class="plus" data-act="fin:${s.id}" ${running ? "" : "disabled"}>Finished</button>${s.cap ? `<button data-act="cap:${s.id}">Time cap</button>` : ""}</div>
+        ${running ? "" : `<div class="st-info center">Finished stops the clock for this team once it runs. Or tap the time to type it.</div>`}`;
+    return `<div class="st wide">${top(s.name, (s.target ? `${s.target} ${s.unit} for time` : "for time") + (s.cap ? " · cap " + fmt(s.cap) : ""))}${info(s)}${body}${totalLine(s, t)}</div>`;
+  },
+  amrap: (s, t, r) => `
+    <div class="st wide">${top(s.name, "rounds + reps" + (s.cap ? " · " + fmt(s.cap) : ""))}${info(s)}
+      <div class="pair">
+        <div><div class="st-unit center">Rounds</div>${bigVal(s.id + "_n", val(t, r, s.id + "_n"), `${s.name} rounds`)}
+          <div class="btns one"><button class="plus" data-k="${s.id}_n" data-d="1">+1 round</button></div>
+          <div class="minus-row"><button data-k="${s.id}_n" data-d="-1">Undo &minus;1</button></div></div>
+        <div><div class="st-unit center">Reps${s.repsPerRound ? ` (of ${s.repsPerRound})` : ""}</div>${bigVal(s.id + "_r", val(t, r, s.id + "_r"), `${s.name} reps`)}
+          ${stepBtns(s.id + "_r", s.steps)}</div>
+      </div>
+      ${s.repsPerRound ? `<div class="st-info center">Just count reps: every ${s.repsPerRound} make a round by themselves.</div>` : ""}
+      ${totalLine(s, t)}
+    </div>`,
+  emom: (s, t, r) => {
+    const done = s.measure === "done", now = minuteNow(s), sel = emomSel[s.id] || now || 1;
+    const move = m => s.moves[(m - 1) % s.moves.length];
+    const cells = [...Array(s.minutes)].map((_, k) => {
+      const m = k + 1, x = val(t, r, `${s.id}_m${m}`);
+      const cls = [m === now ? "now" : "", !done && m === sel ? "sel" : "", done && x === 1 ? "ok" : "", done && x === 2 ? "miss" : "", done && clockStart(r) && m > now ? "later" : ""].join(" ");
+      const shown = done ? (x === 1 ? "✓" : x === 2 ? "✗" : "·") : x;
+      return `<button class="${cls}" data-min="${s.id}:${m}" aria-label="Minute ${m}, ${esc(move(m))}: ${done ? (x === 1 ? "done" : x === 2 ? "missed" : "not marked") : x + " reps"}"><b>${m}</b><span>${esc(move(m))}</span><i>${shown}</i></button>`;
+    }).join("");
+    const key = `${s.id}_m${sel}`;
+    const panel = done
+      ? `<div class="st-info center">${clockStart(r) ? "Minutes tick themselves off as the clock passes them. Only tap a minute your team missed (tap again to undo)."
+        : "Minutes tick themselves off once the trainer starts the clock. Without the clock: tap once for done, again for missed, a third time to clear."}</div>`
+      : `<div class="min-panel">${top(`Minute ${sel} · ${move(sel)}`, "reps")}${bigVal(key, val(t, r, key), `Minute ${sel} reps`)}${stepBtns(key, s.steps)}</div>`;
+    return `<div class="st wide">${top(s.name, `${s.minutes} min · ${done ? "minutes done" : "reps"}${s.scored ? "" : " · not ranked"}`)}${info(s)}
+      <div class="mins">${cells}</div>${panel}
+      <div class="st-other">${W.rounds > 1 ? "Total over all rounds" : "Total"}: ${score(s, t).text}</div></div>`;
+  },
+};
+
+function clockBar() {
+  if (!timed() || (live && eventId && !eventId.startsWith(today()))) return "";
+  const running = clockStart(state.round);
+  const ctl = !canRunClock() ? (running ? "" : `<span class="note">The trainer starts the clock</span>`)
+    : running ? `<span id="clockArea"><button class="ghost" id="clockReset">Reset clock</button></span>`
+    : `<button class="solid" id="clockStart">Start clock</button>`;
+  return `<div class="clockbar"><span class="clock-val" data-clock>${clockText()}</span>${ctl}</div>`;
+}
+
+function renderBoard() {
+  const i = state.active, t = state.teams[i], r = state.round;
+  const board = $("board");
+  if (!t) { board.innerHTML = ""; return; }
+  board.setAttribute("style", tc(i));
+  board.innerHTML = `
+    <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">${W.rounds > 1 ? "Runde " + (r + 1) : ""}</span></div>
+    ${clockBar()}
+    <div class="grid">${W.stations.map(s => STATION[s.type](s, t, r).replace(/<\/div>\s*$/, pbLine(s, t) + "</div>")).join("")}</div>`;
+  if (editing) {
+    const inp = $("edit");
+    if (!inp) { editing = null; return; }
+    inp.focus(); inp.select();
+    const commit = () => {
+      const key = editing;
+      if (key.endsWith("_t") && stationOf(key)?.type === "time") {
+        const secs = inp.value.trim() ? parseTime(inp.value) : 0;
+        if (secs !== null) { setValue(state.active, key, secs); setValue(state.active, key.slice(0, -2) + "_c", 0); }
+      } else setValue(state.active, key, Number(inp.value) || 0);
+      editing = null; save(); renderAll();
+    };
+    inp.addEventListener("blur", commit, { once: true });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
+  }
+}
+
+// EMOM minutes the clock has fully passed. The team's own phone (or a phone on its own) saves those still
+// unmarked as done, so a team only taps the minutes it missed. The trainer's phone leaves them alone,
+// so it never overwrites a miss a team just tapped.
+const minutesPassed = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60)) : 0;
+const filled = {};
+function fillPassed() {
+  if (!(view === "team" || view === "local") || (live && eventId && !eventId.startsWith(today()))) return;
+  const t = state.teams[state.active]; if (!t) return;
+  for (const s of W.stations) if (s.type === "emom" && s.measure === "done") {
+    const p = minutesPassed(s), k = [eventId, t.id, state.round, clockStart(state.round), s.id].join("|");
+    if (!p || filled[k] >= p) continue;
+    filled[k] = p;
+    for (let m = 1; m <= p; m++) if (!val(t, state.round, `${s.id}_m${m}`)) setValue(state.active, `${s.id}_m${m}`, 1);
+    save();
+  }
+}
+
+// Shows the running clock and moves EMOM boards on to the new minute.
+setInterval(() => {
+  if (!timed()) return;
+  document.querySelectorAll("[data-clock]").forEach(el => el.textContent = clockText());
+  fillPassed();
+  let moved = false;
+  for (const s of W.stations) if (s.type === "emom") {
+    const m = minuteNow(s);
+    if (m && m !== lastMinute[s.id]) { lastMinute[s.id] = m; emomSel[s.id] = m; moved = true; }
+  }
+  if (moved && !editing) renderBoard();
+}, 250);
+
+
+const HOW = {
+  count: s => `most ${s.unit} wins`,
+  time: s => `fastest time wins; ${s.totalReps ? "a capped team scores the cap plus one second per missing rep" : "capped teams rank behind all finishers, by reps"}`,
+  amrap: () => "most rounds plus reps wins",
+  emom: s => s.measure === "done" ? "most minutes done wins" : "most reps over all minutes wins",
+};
+// Ranks every team on each station, then adds the ranks up to points (lowest wins). place shares ties.
+function ranksOf(s, teams, w = W) {
+  const keys = teams.map(t => score(s, t, w).key);
+  return keys.map(k => 1 + keys.filter(o => cmp(o, k) < 0).length);
+}
+function table(w, teams) {
+  const rs = w.stations.filter(ranked), rk = Object.fromEntries(rs.map(s => [s.id, ranksOf(s, teams, w)]));
+  const rows = teams.map((t, i) => ({ t, i, pts: rs.reduce((a, s) => a + rk[s.id][i], 0) })).sort((a, b) => a.pts - b.pts);
+  rows.forEach(r => r.place = 1 + rows.filter(o => o.pts < r.pts).length);
+  return { rk, rows, n: rs.length };
+}
+const unitOf = s => s.type === "count" ? s.unit : s.type === "emom" ? (s.measure === "done" ? "minutes" : "reps") : TYPES[s.type];
+
+// ---- History and personal bests ----
+// Every phone in a live session reads all sessions once. A best compares the same workout (same id and
+// rounds) and station over the sessions before the one on screen. Teams are matched by their id, which
+// carries over from week to week, so a renamed team keeps its bests.
+let allEvents = null, eventsVersion = 0, bestsMemo = null;
+const skey = (w, s) => `${w.id}/${w.rounds}/${s.id}/${s.type}`;
+const complete = (s, sc) => s.type === "time" ? sc.key[0] === 0 : sc.key.some(x => x < 0);
+const shortDate = id => {
+  const d = new Date(id.slice(0, 10) + "T12:00");
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
+};
+function pastSessions() {
+  return Object.keys(allEvents || {}).sort().filter(id => id < (eventId || "9") && allEvents[id] && allEvents[id].teams).map(id => {
+    const e = allEvents[id], w = e.workout ? parseWorkout(e.workout) || LEGACY : LEGACY;
+    const teams = Object.keys(e.teams).sort((a, b) => e.teams[a].order - e.teams[b].order).map(tid => ({
+      id: tid, name: e.teams[tid].name, counts: [...Array(w.rounds).keys()].map(r => ({ ...(e.counts?.[tid]?.["r" + r] || {}) })) }));
+    return { id, w, teams };
+  });
+}
+function bests() {
+  const stamp = eventsVersion + "|" + eventId;
+  if (bestsMemo && bestsMemo.stamp === stamp) return bestsMemo;
+  const pb = {}, rec = {};
+  for (const ev of pastSessions()) for (const s of ev.w.stations) {
+    const k = skey(ev.w, s);
+    for (const t of ev.teams) {
+      const sc = score(s, t, ev.w); if (!complete(s, sc)) continue;
+      const entry = { key: sc.key, text: sc.text, date: ev.id, team: t.name };
+      if (!pb[t.id + "|" + k] || cmp(sc.key, pb[t.id + "|" + k].key) < 0) pb[t.id + "|" + k] = entry;
+      if (!rec[k] || cmp(sc.key, rec[k].key) < 0) rec[k] = entry;
+    }
+  }
+  return bestsMemo = { stamp, pb, rec };
+}
+// "Record" when a team beats every earlier result, "PB" when it beats its own earlier best.
+function badge(s, t) {
+  if (!allEvents) return "";
+  const sc = score(s, t); if (!complete(s, sc)) return "";
+  const b = bests(), k = skey(W, s), rec = b.rec[k], pb = b.pb[t.id + "|" + k];
+  if (rec && cmp(sc.key, rec.key) < 0) return ` <span class="pb rec">Record</span>`;
+  if (pb && cmp(sc.key, pb.key) < 0) return ` <span class="pb">PB</span>`;
+  return "";
+}
+function pbLine(s, t) {
+  if (!allEvents) return "";
+  const pb = bests().pb[t.id + "|" + skey(W, s)];
+  return pb ? `<div class="st-other">Team best: ${esc(pb.text)} (${esc(shortDate(pb.date))})${badge(s, t)}</div>` : "";
+}
+function renderHistory() {
+  const el = $("historyCard");
+  el.hidden = screenMode || !(live && allEvents && view === "trainer");
+  if (el.hidden) return;
+  const b = bests(), t = state.teams[state.active];
+  const rec = W.stations.map(s => [s, b.rec[skey(W, s)]]).filter(([, r]) => r);
+  const pbs = t ? W.stations.map(s => [s, b.pb[t.id + "|" + skey(W, s)]]).filter(([, p]) => p) : [];
+  const past = pastSessions().slice(-12).reverse().map(ev => {
+    const any = ev.teams.some(t => t.counts.some(c => Object.values(c).some(x => x)));
+    const win = !table(ev.w, ev.teams).n ? "not ranked" : any ? table(ev.w, ev.teams).rows.filter(r => r.place === 1).map(r => r.t.name).join(" & ") : "no scores";
+    return `<div class="link-row"><span class="n">${esc(shortDate(ev.id))}${ev.id.length > 10 ? " (extra)" : ""} · ${esc(ev.w.name)}</span><span class="note">${esc(win)}</span></div>`;
+  }).join("");
+  el.innerHTML = `
+    <h2>History</h2>
+    <h3 class="sub">Records · ${esc(W.name)}</h3>
+    ${rec.length ? `<div class="tbl-wrap"><table><thead><tr><th>Station</th><th>Best</th><th>Team</th><th>Date</th></tr></thead><tbody>${rec.map(([s, r]) =>
+      `<tr><td>${esc(s.name)}</td><td>${esc(r.text)}</td><td>${esc(r.team)}</td><td>${esc(shortDate(r.date))}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="note">No earlier sessions with this workout yet.</p>`}
+    ${t ? `<h3 class="sub">${esc(t.name)} · team bests</h3>
+    ${pbs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Station</th><th>Best</th><th>Date</th></tr></thead><tbody>${pbs.map(([s, p]) =>
+      `<tr><td>${esc(s.name)}</td><td>${esc(p.text)}</td><td>${esc(shortDate(p.date))}</td></tr>`).join("")}</tbody></table></div>`
+      : `<p class="note">No earlier results for this team with this workout.</p>`}` : ""}
+    <h3 class="sub">Past sessions · winners</h3>
+    ${past || `<p class="note">None yet.</p>`}
+    <p class="note">Bests compare the same workout over earlier sessions. A team keeps its bests when it's renamed; a team that is removed and added again starts fresh.</p>`;
+}
+
+// ---- QR codes ----
+// The QR library loads only when a code is first shown.
+const QR_LIB = "https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
+let qrLoading = null;
+const qrSvg = {};
+function loadQR() {
+  if (window.qrcode) return Promise.resolve(window.qrcode);
+  return qrLoading = qrLoading || new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = QR_LIB; s.onload = () => ok(window.qrcode); s.onerror = () => { qrLoading = null; fail(); };
+    document.head.append(s);
+  });
+}
+async function drawQR(el, url) {
+  if (!el) return;
+  if (qrSvg[url]) { el.innerHTML = qrSvg[url]; return; }
+  try {
+    const q = (await loadQR())(0, "M"); q.addData(url); q.make();
+    qrSvg[url] = q.createSvgTag({ cellSize: 8, margin: 2, scalable: true, alt: "QR code for " + url });
+    if (el.isConnected) el.innerHTML = qrSvg[url];
+  } catch { el.innerHTML = `<p class="note">Couldn't load the QR code. Use Send link instead.</p>`; }
+}
+let qrFor = null; // null: closed, "": everyone, or a team id
+function renderQrCard() {
+  const el = $("qrCard");
+  el.hidden = screenMode || qrFor === null || view !== "trainer" || !eventId || !eventId.startsWith(today());
+  if (el.hidden) return;
+  const t = state.teams.find(t => t.id === qrFor);
+  if (qrFor && !t) qrFor = "";
+  const url = baseUrl() + (t ? "?team=" + t.id : "");
+  const stamp = url + "|" + state.teams.map(t => t.id + t.name).join();
+  if (el.dataset.stamp === stamp) return;
+  el.dataset.stamp = stamp;
+  el.innerHTML = `
+    <div class="live-top"><h2>Join by QR code</h2><button class="ghost" id="qrClose">Close</button></div>
+    <div class="qr-pick">${[["", "Everyone"], ...state.teams.map(t => [t.id, t.name])].map(([id, n]) =>
+      `<button data-qr="${id}" aria-pressed="${(t ? t.id : "") === id}">${esc(n)}</button>`).join("")}</div>
+    <div class="qr big" id="qrBox"></div>
+    <p class="note center">${t ? `Scan to score for <b>${esc(t.name)}</b>. The phone remembers the team every week.` : "Scan to join today's session, then pick your team."}</p>`;
+  drawQR($("qrBox"), url);
+}
+
+// ---- Big screen ----
+// ?screen shows today's standings large for a TV or laptop, with the clock and a QR code to join.
+// It follows the live session like a team phone but can't change anything.
+// A thin bar under an EMOM's minutes on the big screen: done, missed, still to come.
+function gridBar(s, t) {
+  if (s.measure !== "done") return "";
+  const cells = roundList().flatMap(r => [...Array(s.minutes)].map((_, k) => val(t, r, `${s.id}_m${k + 1}`)));
+  return `<span class="gbar">${cells.map(x => `<i class="${x === 1 ? "ok" : x === 2 ? "miss" : ""}"></i>`).join("")}</span>`;
+}
+function renderScreen() {
+  const el = $("screen");
+  document.body.classList.toggle("screen", screenMode);
+  el.hidden = !screenMode;
+  if (!screenMode) return;
+  if (view !== "screen" && view !== "local") {
+    el.innerHTML = `<div class="scr-title">${esc(W.name)}</div>
+      <p class="scr-sub">${view === "missing" ? "Today's session hasn't started yet. This screen switches to it by itself." : view === "error" ? esc(liveMsg) : "Connecting…"}</p>`;
+    return;
+  }
+  const { rk, rows, n } = table(W, state.teams), one = n === 1, any = anyScores() && n > 0;
+  const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Runde " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
+  el.innerHTML = `
+    <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
+      ${timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
+    <div class="scr-main">
+      <div class="tbl-wrap"><table class="scr-tbl">
+        <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
+        <tbody>${rows.map(({ t, i, pts, place }) => `
+          <tr class="${any && place === 1 ? "lead" : ""}"><td class="place">${any ? place : ""}</td>
+            <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span></td>
+            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
+            ${n > 1 ? `<td class="pts">${pts}</td>` : ""}</tr>`).join("")}</tbody>
+      </table></div>
+      ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
+    </div>`;
+  if (view === "screen") drawQR($("scrQr"), baseUrl());
+}
+
+// ---- Glitter ----
+// A burst of glitter over the whole screen. Secret: tap the workout title five times quickly.
+// It also goes off by itself for a PB, a record or a reached team goal (a team phone only for its own team).
+const GLITTER = ["#ffd43b", "#ff6bcb", "#5b9dff", "#5fcf75", "#ffffff", "#d27ff0", "#ff8a4c", "#3fc7dc"];
+function glitter(message = "", big = false) {
+  if (message) {
+    const m = document.createElement("div");
+    m.className = "glitter-msg"; m.textContent = message;
+    document.body.append(m); setTimeout(() => m.remove(), 2800);
+  }
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const c = document.createElement("canvas"), dpr = devicePixelRatio || 1;
+  c.className = "glitter"; c.width = innerWidth * dpr; c.height = innerHeight * dpr;
+  document.body.append(c);
+  const g = c.getContext("2d"), w = c.width, h = c.height, t0 = performance.now();
+  const parts = Array.from({ length: big ? 280 : 150 }, (_, i) => {
+    // Half rain down from the top, half burst out from the middle.
+    const burst = i % 2, a = Math.random() * Math.PI * 2, v = (3 + Math.random() * 9) * dpr;
+    return {
+      x: burst ? w / 2 : Math.random() * w, y: burst ? h * .42 : -Math.random() * h * .4,
+      vx: burst ? Math.cos(a) * v : (Math.random() - .5) * 2 * dpr, vy: burst ? Math.sin(a) * v - 4 * dpr : (2 + Math.random() * 4) * dpr,
+      s: (3 + Math.random() * 5) * dpr, c: GLITTER[i % GLITTER.length], r: Math.random() * 6, vr: (Math.random() - .5) * .4,
+    };
+  });
+  (function frame(now) {
+    const t = now - t0;
+    g.clearRect(0, 0, w, h);
+    for (const p of parts) {
+      p.vx *= .985; p.vy = p.vy * .985 + .12 * dpr; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      g.save(); g.translate(p.x, p.y); g.rotate(p.r);
+      g.globalAlpha = Math.max(0, 1 - t / 3000) * (.55 + .45 * Math.abs(Math.sin(t / 70 + p.r * 3)));
+      g.fillStyle = p.c; g.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+      g.restore();
+    }
+    if (t < 3000) requestAnimationFrame(frame); else c.remove();
+  })(t0);
+}
+let titleTaps = [];
+document.addEventListener("click", e => {
+  if (!e.target.closest("#title, .scr-title")) return;
+  const now = Date.now();
+  titleTaps = titleTaps.filter(t => now - t < 1500).concat(now);
+  if (titleTaps.length >= 5) { titleTaps = []; glitter("", true); }
+});
+// Compares what's worth celebrating now with the last look, and fires for anything new.
+// Opening a session, loading history or switching view only takes a fresh look, so old PBs don't go off.
+let celebStamp = null, celebSeen = new Set();
+function celebrate() {
+  const stamp = [eventId, eventsVersion, W.id, view, state.round].join("|"), now = new Set();
+  for (const t of state.teams) for (const s of W.stations) {
+    const b = badge(s, t);
+    if (b) now.add(`${t.id}|${s.id}|${b.includes("Record") ? "Record" : "PB"}`);
+    if (s.type === "time" && s.target) for (const r of roundList()) if (val(t, r, s.id + "_t") && !val(t, r, s.id + "_c")) now.add(`${t.id}|${s.id}|goal`);
+  }
+  const fresh = stamp === celebStamp ? [...now].filter(k => !celebSeen.has(k)) : [];
+  celebStamp = stamp; celebSeen = now;
+  const mine = view === "team" ? state.teams[state.active]?.id : null;
+  const hits = fresh.map(k => k.split("|")).filter(([tid]) => !mine || tid === mine);
+  if (!hits.length) return;
+  const [tid, sid, kind] = hits.find(x => x[2] === "Record") || hits[0];
+  const t = state.teams.find(t => t.id === tid), s = W.stations.find(s => s.id === sid);
+  glitter(`${t.name} · ${kind === "goal" ? `${s.target} ${s.unit}!` : kind + "!"}`, kind === "Record" || screenMode);
+}
+
+function renderStandings() {
+  if (!state.teams.length) { $("standings").innerHTML = ""; return; }
+  const { rk, rows, n } = table(W, state.teams), one = n === 1;
+  const any = anyScores();
+  const best = rows[0].pts;
+  $("standings").innerHTML = `
+    <thead><tr><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n ? `<th>${one ? "Rank" : "Points"}</th>` : ""}</tr></thead>
+    <tbody>${rows.map(({ t, i, pts }) => `
+      <tr class="${n && any && pts === best ? "lead" : ""}">
+        <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span></td>
+        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
+        ${n ? `<td class="pts">${pts}</td>` : ""}
+      </tr>`).join("")}</tbody>`;
+  const over = W.rounds > 1 ? " over all rounds" : "";
+  const free = W.stations.filter(s => !ranked(s));
+  const freeNote = free.length ? ` ${free.map(s => s.name).join(" and ")} ${free.length > 1 ? "are" : "is"} each team's own progress and not ranked.` : "";
+  const ranks1 = W.stations.find(ranked);
+  $("standNote").textContent = (!n ? `This workout isn't ranked: each team follows its own progress${over}.`
+    : one && !free.length
+    ? `Teams are ranked by their result${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
+    : one ? `Teams are ranked by ${ranks1.name}${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
+    : `Each column is the team's result${over}, with its rank below. Points add up the ranks across the ${n} ranked stations, so the lowest score wins. Tied teams share a rank.`) + (n ? freeNote : "");
+  celebrate();
+}
+
+function renderSetup() {
+  $("setup").innerHTML = state.teams.map((t, i) => `
+    <div class="setup-row" style="${tc(i)}">
+      <span class="dot"></span>
+      <input id="name-${t.id}" data-name="${i}" value="${esc(t.name)}" aria-label="Team ${i + 1} name" maxlength="24">
+      ${state.teams.length > 1 ? `<button class="ghost" data-remove="${i}" aria-label="Remove ${esc(t.name)}">Remove</button>` : ""}
+    </div>`).join("");
+}
+
+// Trainer (or a phone on its own): the list of workouts. New ones are added by pasting their JSON,
+// usually written by a chatbot from the trainer's workout card with the instructions below.
+const describe = s => s.type === "count" ? `max ${s.unit}`
+  : s.type === "time" ? (s.target ? `${s.target} ${s.unit} for time` : "for time") + (s.cap ? `, cap ${fmt(s.cap)}` : "")
+  : s.type === "amrap" ? "rounds + reps" + (s.cap ? `, ${fmt(s.cap)}` : "")
+  : `EMOM ${s.minutes} min, ${s.measure === "done" ? "done or missed" : "reps"}${s.scored ? ", ranked" : ", progress only (not ranked)"}`;
+const summary = w => (w.rounds > 1 ? `${w.rounds} rounds: ` : "") + w.stations.map(s => `${s.name} (${describe(s)})`).join(", ");
+let wConfirm = null, pasteText = "", pasteCheck = null, wMsg = "", startPick = DEFAULT.id;
+
+const LLM_PROMPT = `You convert a group workout into a JSON file for our team scoring app.
+
+CONTEXT
+- The setting: a Hyrox-style group class on Thursdays (Thursday Athletic). Usually 4 teams of 3 work at the same time and share the work within the team.
+- Each team scores on its own phone. Every station is a tile with a big number and three + buttons (the "steps"), so pick steps that match how fast the number grows.
+- The trainer starts a shared clock for timed parts. A big screen shows the live standings.
+- Each station ranks the teams, the ranks are added up, and the lowest total wins, so every station counts equally. Only make something a station if it should count for the ranking. The exception is an EMOM: it shows as a grid of minutes for each team's own progress and isn't ranked unless you add "scored": true.
+
+Your answer: the JSON in one code block, then at most three short lines with anything you had to guess. Write strict JSON: double quotes, no comments, no trailing commas.
+
+THE FORMAT
+{
+  "id": "short-name",
+  "name": "Name shown in the app",
+  "place": "Thursday Athletic",
+  "teams": 4,
+  "teamSize": 3,
+  "rounds": 1,
+  "stations": [ ...one object per scored part... ]
+}
+- id: lowercase letters, digits and dashes, max 20 characters, for example "teamwork-okt". Never one of: ${LIBRARY.map(w => w.id).join(", ")}. If you were given an existing workout to change, keep its id.
+- name (max 40 characters) and place (optional, max 40).
+- teams (1-12) and teamSize (1-20): from the workout. If it doesn't say, use 4 and 3.
+- rounds (1-10): how often the WHOLE list of stations is repeated, with each repeat scored as its own round (like "Runde 1" and "Runde 2"). Almost always 1. Rounds that are part of one piece ("4 rounds for time", "5 Runden", "3 rounds of the EMOM") are NOT rounds here: they belong to that station, inside its info, totalReps or minutes.
+
+STATIONS
+A station is one part that is scored separately. Leave out warm-ups, rest and anything not scored. Every station has:
+- "id": 1-8 lowercase letters or digits only, unique in the workout, e.g. "erg", "wb", "partb"
+- "name": short, max 30 characters
+- "type": one of the four types below
+- "info": one line with what to do, max 120 characters, e.g. "4 rounds: 400 m run · 20 lunges · 15 KB swings"
+- "steps": three whole numbers for the + buttons: [1, 5, 10] for reps or cals, [10, 50, 100] for meters, [1, 2, 5] for small counts like lanes
+Use the workout's language for name, info and moves.
+
+TYPICAL CARDS
+- Partner or "you go, I go" (YGIG) formats like "A vs B" (one works, the other holds, then switch): score only the side that can be counted (reps, cals, meters, lanes), and set teamSize to 2 for pairs. Holds, planks and wall sits are not scored; mention them in info.
+- Buy-in, warm-up or "start easy" parts are not scored. If the card has nothing at all that the card or the trainer scores, don't invent a score: answer in one line that there's nothing to score and suggest what could be counted.
+- Progressive rounds ("+1 rep every round", "+speed every round"): count what the team completes, e.g. "count" with unit "rounds".
+- Two levels like "50/55" or "3000 m / 2000 m": use the first number for target or totalReps, put both in info, and mention it after the code block.
+- Parts whose length depends on another station ("until the other team tags off"): count the intervals or rounds the team completes, or leave the part out if the card doesn't score it.
+
+TYPES
+- "count": max effort, the team counts what it did (reps, cals, meters, lanes). Add "unit", max 12 characters, e.g. "reps", "cals", "meters".
+- "time": for time, fastest wins. Add "cap" if there is a time cap, always written "mm:ss", e.g. "18:00". Add "totalReps" if all work of the piece is reps or cals that can be added up (rounds times reps per round).
+  If the team works towards one shared goal ("120 team reps = done", "2000 m team goal"), add "target" (the number, e.g. 120 or 2000) and "unit" ("reps", "meters", "cals"). Teams then count towards it and the time is taken when they reach it. Pick steps that fit, e.g. [10, 50, 250] for 250 m pieces. With totalReps a capped team scores the cap plus 1 second per missing rep.
+- "amrap": as many rounds and reps as possible. Add "cap" as "mm:ss" (the AMRAP length) and "repsPerRound" if one round has a fixed number of reps.
+- "emom": every minute on the minute. Add "minutes" = the total number of minutes (e.g. 4 moves for 4 rounds = 16), "moves" = the list of what happens in minute 1, 2, 3 ... (it repeats; include "Rest" if a minute is rest), and "measure": "done" (usual: a grid where minutes tick themselves off on the shared clock and a team only taps the ones it missed) or "reps" (only if the card asks for max reps each minute). An EMOM is each team's own progress and isn't ranked. Add "scored": true only if the card says the EMOM result counts towards the winner.
+
+EXAMPLE 1 (max effort stations, done twice)
+{"id":"team-output-b","name":"Team Output B","place":"Thursday Athletic","teams":4,"teamSize":3,"rounds":2,"stations":[
+ {"id":"erg","name":"Erg","type":"count","unit":"cals","steps":[1,5,10],"info":"90s/person · Ski, Row, Bike"},
+ {"id":"wb","name":"Wallballs","type":"count","unit":"reps","steps":[1,5,10],"info":"5 min AMRAP · max 20/ball"},
+ {"id":"run","name":"Run","type":"count","unit":"meters","steps":[10,50,100],"info":"5 min · +1% incline/min"}]}
+
+EXAMPLE 2 ("Part A: EMOM 12, 3 moves. Part B: 4 rounds for time, 18 min cap")
+{"id":"emom-and-time","name":"EMOM + 4 Rounds","teams":4,"teamSize":3,"rounds":1,"stations":[
+ {"id":"parta","name":"Part A · EMOM 12","type":"emom","minutes":12,"measure":"done","moves":["15 cal Row","20 Wallballs","10 Burpees"],"steps":[1,5,10],"info":"Minute done when all reps are in"},
+ {"id":"partb","name":"Part B · for time","type":"time","cap":"18:00","totalReps":180,"steps":[1,5,10],"info":"4 rounds: 20 lunges · 15 KB swings · 10 burpees"}]}
+(Part A is a progress grid and isn't ranked, so Part B decides the winner. Part B: the 4 rounds belong to the station, so "rounds" stays 1, and totalReps = 4 x (20 + 15 + 10) = 180. When parts can't be added up, for example runs in meters, leave totalReps out.)
+
+BEFORE YOU ANSWER, CHECK
+- Every station id is 1-8 lowercase letters or digits (no dashes, underscores or spaces).
+- Every cap is a string like "18:00".
+- "rounds" is 1 unless the whole workout is repeated and scored per round.
+- The JSON parses: no comments, no trailing commas.
+
+Here is the workout:
+`;
+
+const slug = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "workout";
+// Reads a pasted workout. Small slips chatbots often make are fixed and listed; real problems are
+// explained in words a trainer can pass back to the chatbot; likely misunderstandings get a warning.
+function parseLoose(text) {
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b < a) throw new Error("none");
+  const raw = text.slice(a, b + 1);
+  const tidy = j => j.replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1");
+  try { return JSON.parse(raw); } catch {}
+  try { return JSON.parse(tidy(raw)); } catch {}
+  // Chat apps and phones turn quotes into curly ones.
+  return JSON.parse(tidy(raw.replace(/[“”„‟«»]/g, '"').replace(/[‘’‚‛]/g, "'")));
+}
+function checkWorkout(text) {
+  let o;
+  try { o = parseLoose(text); }
+  catch (e) {
+    return { errors: [e.message === "none" ? "There's no workout in the text. Paste the code block the chatbot wrote. If it said there's nothing to score, the card doesn't need the app."
+      : `The text isn't valid JSON (${e.message}). Ask the chatbot to fix it.`] };
+  }
+  if (!o || typeof o !== "object" || Array.isArray(o)) return { errors: ["The text isn't a workout."] };
+  const errors = [], fixed = [], warnings = [];
+  if (!o.name) errors.push("The workout needs a name.");
+  const id = slug(o.id || o.name);
+  if (o.id !== undefined && id !== o.id) fixed.push(`id "${o.id}" became "${id}"`);
+  o.id = id;
+  if (isBuiltIn(o.id)) { o.id = o.id.slice(0, 15) + "-copy"; fixed.push(`id became "${o.id}" because a built-in workout uses the other one`); }
+  if (o.rounds !== undefined && !(Number.isInteger(+o.rounds) && o.rounds >= 1 && o.rounds <= 10)) errors.push("rounds must be a whole number from 1 to 10.");
+  if (!Array.isArray(o.stations) || !o.stations.length) errors.push("The workout needs at least one station.");
+  else {
+    const seen = new Set();
+    o.stations.forEach((s, i) => {
+      const n = `Station ${i + 1}${s && s.name ? ` (${s.name})` : ""}`;
+      if (!s || typeof s !== "object") return errors.push(`${n} isn't valid.`);
+      // Station ids are only used inside the app, so any name will do once it fits.
+      let sid = String(s.id || s.name || "st").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8) || "st";
+      for (let k = 2; seen.has(sid); k++) sid = sid.slice(0, 7) + k;
+      s.id = sid; seen.add(sid);
+      if (typeof s.type === "string") s.type = s.type.toLowerCase();
+      if (!TYPES[s.type || "count"]) errors.push(`${n}: the type must be count, time, amrap or emom.`);
+      if (s.type === "emom" && !(Number.isInteger(+s.minutes) && s.minutes >= 1 && s.minutes <= 60)) errors.push(`${n}: minutes must be a whole number from 1 to 60.`);
+      if ((s.type === "time" || s.type === "amrap") && s.cap !== undefined) {
+        const c = parseCap(s.cap);
+        if (c === null || !(c >= 0)) errors.push(`${n}: the cap must be a time like "20:00".`);
+        else if (typeof s.cap !== "string" || !/^\d+:\d\d$/.test(s.cap.trim())) fixed.push(`${n}: cap ${JSON.stringify(s.cap)} read as ${fmt(c)}`);
+      }
+      if (s.type === "amrap" && !s.cap) warnings.push(`${n} has no length. Add a cap like "20:00" so the clock counts down.`);
+    });
+    if (o.rounds > 1 && o.stations.some(s => s && s.type && s.type !== "count"))
+      warnings.push(`rounds is ${o.rounds}, so every station is done ${o.rounds} times and scored per round. If the rounds belong to one part ("${o.rounds} rounds for time"), ask the chatbot to set rounds to 1.`);
+  }
+  if (errors.length) return { errors };
+  const w = normWorkout(o);
+  if (!w) return { errors: ["The workout couldn't be read."] };
+  if (JSON.stringify(w).length > 6000) return { errors: ["The workout is too long to save. Shorten the info lines or moves."] };
+  return { w, errors: [], fixed, warnings };
+}
+
+function persistSaved() {
+  try { localStorage.setItem(SAVED_KEY, JSON.stringify(Object.fromEntries(Object.entries(saved).map(([id, w]) => [id, JSON.stringify(w)])))); } catch {}
+}
+async function storeWorkout(w) {
+  if (live) return live.fb.set(live.fb.ref(live.db, "workouts/" + w.id), JSON.stringify(w));
+  saved[w.id] = w; persistSaved();
+}
+function deleteWorkout(id) {
+  if (live) return live.fb.set(live.fb.ref(live.db, "workouts/" + id), null).catch(() => {});
+  delete saved[id]; persistSaved();
+}
+async function saveChecked(btn) {
+  const w = pasteCheck && pasteCheck.w; if (!w) return;
+  btn.disabled = true;
+  try { await storeWorkout(w); wMsg = `Saved ${w.name}. Tap Use next to it to switch to it.`; pasteText = ""; pasteCheck = null; }
+  catch { wMsg = "Couldn't save it. Check the connection and try again."; }
+  renderWorkout(true);
+}
+async function copyText(text, btn) {
+  try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
+  catch { btn.textContent = "Couldn't copy"; }
+  setTimeout(() => btn.textContent = btn.dataset.label, 1500);
+}
+const workoutOptions = sel => [...LIBRARY, ...savedList()].map(w => `<option value="${esc(w.id)}" ${w.id === sel ? "selected" : ""}>${esc(w.name)}</option>`).join("");
+
+function renderWorkout(force) {
+  const el = $("workoutCard"), a = document.activeElement;
+  el.hidden = !(view === "local" || view === "trainer");
+  if (el.hidden || (!force && el.contains(a) && a.tagName === "TEXTAREA")) return;
+  const row = (w, own) => {
+    const c = wConfirm && wConfirm.id === w.id ? wConfirm.kind : "";
+    return `<div class="w-row"><div class="n"><b>${esc(w.name)}</b><span>${esc(summary(w))}</span></div>
+      <div class="actions">${sameWorkout(w, W) ? `<span class="note">In use</span>` : `<button class="ghost" data-wuse="${esc(w.id)}">Use</button>`}
+        <button class="ghost" data-wcopy="${esc(w.id)}" data-label="Copy">Copy</button>
+        ${own ? `<button class="ghost danger" data-wdel="${esc(w.id)}">Delete</button>` : ""}</div>
+      ${c === "use" ? `<span class="confirm">Switch to ${esc(w.name)} and clear all scores? <button class="solid-danger" id="wUseYes" data-w="${esc(w.id)}">Switch</button><button class="ghost" id="wNo">Cancel</button></span>` : ""}
+      ${c === "del" ? `<span class="confirm">Delete ${esc(w.name)}? Sessions that used it keep their copy. <button class="solid-danger" id="wDelYes" data-w="${esc(w.id)}">Delete</button><button class="ghost" id="wNo">Cancel</button></span>` : ""}
+    </div>`;
+  };
+  const mine = savedList(), pc = pasteCheck;
+  const listed = [...LIBRARY, ...mine].some(w => sameWorkout(w, W));
+  el.innerHTML = `
+    <h2>Workouts</h2>
+    ${listed ? "" : `<p class="note">In use: <b>${esc(W.name)}</b>, as saved with this session. ${esc(summary(W))}.</p>`}
+    <h3 class="sub">Your workouts</h3>
+    ${mine.length ? mine.map(w => row(w, true)).join("") : `<p class="note">None yet. Add one below.</p>`}
+    <h3 class="sub">Built in</h3>
+    ${LIBRARY.map(w => row(w, false)).join("")}
+    <p class="note">${live ? "Use switches every phone in this session to that workout" : "Use switches this phone to that workout"} and clears the scores. Copy puts a workout's text on the clipboard, so a chatbot can change it and you paste it back.</p>
+    <h3 class="sub">Add a workout</h3>
+    <p class="note">Copy the instructions and paste them into ChatGPT, Claude or similar, followed by your workout card or a description. Paste its answer below. A workout with the same id as one of yours replaces it.</p>
+    <div class="actions"><button class="ghost" id="wPrompt" data-label="Copy instructions for a chatbot">Copy instructions for a chatbot</button></div>
+    <textarea id="wPaste" class="paste" rows="6" spellcheck="false" placeholder="Paste the chatbot's answer here" aria-label="Workout to add">${esc(pasteText)}</textarea>
+    <div class="actions"><button class="ghost" id="wCheck">Check</button>
+      ${pc && pc.w ? `<button class="solid" id="wSave">${saved[pc.w.id] ? "Replace" : "Save"} ${esc(pc.w.name)}</button>` : ""}</div>
+    ${pc ? pc.errors.length ? pc.errors.map(e => `<p class="err">${esc(e)}</p>`).join("")
+      : `<p class="note"><b>${esc(pc.w.name)}</b>, ${pc.w.teams} teams of ${pc.w.teamSize}${pc.w.rounds > 1 ? `, ${pc.w.rounds} rounds (every station repeats)` : ""}. Check the stations before you save:</p>
+        <ul class="note">${pc.w.stations.map(s => `<li><b>${esc(s.name)}</b>: ${esc(describe(s))}${s.type === "count" ? ", + buttons " + s.steps.join("/") : ""}${s.type === "emom" ? ": " + esc(s.moves.join(", ")) : ""}${s.info ? ` · ${esc(s.info)}` : ""}</li>`).join("")}</ul>
+        ${pc.warnings.map(x => `<p class="err">Please check: ${esc(x)}</p>`).join("")}
+        ${pc.fixed.length ? `<p class="note">Fixed automatically: ${esc(pc.fixed.join("; "))}.</p>` : ""}` : ""}
+    ${wMsg ? `<p class="note">${esc(wMsg)}</p>` : ""}`;
+}
+
+function renderLive() {
+  if (screenMode) { $("live").hidden = true; return; }
+  const el = $("live"), msg = liveMsg ? `<p class="note">${esc(liveMsg)}</p>` : "";
+  const conn = `<span class="conn${connected ? "" : " off"}">${connected ? "Live" : "Offline, will sync"}</span>`;
+  const label = eventId ? `<span>Session <b>${esc(eventLabel(eventId))}</b></span>` : "";
+  el.removeAttribute("style");
+  if (view === "local") {
+    el.innerHTML = FIREBASE_CONFIG ? `
+      <div class="live-top"><h2>Team phones</h2><a class="solid" href="${baseUrl()}">Back to live scoring</a></div>
+      <p class="note">This phone is counting on its own. Nothing here is shared.</p>` : "";
+  } else if (view === "trainer" && !eventId.startsWith(today())) {
+    el.innerHTML = `
+      <div class="live-top">${label} ${eventId.slice(0, 4)}${conn}</div>
+      <p class="note">Past session, open only on your phone. Pick each team with the tabs below and type in its numbers${W.rounds > 1 ? " for every round" : ""}. The teams' phones aren't affected.</p>
+      <div class="actions"><a class="solid" href="${baseUrl()}">Back to today</a></div>${msg}`;
+  } else if (view === "trainer") {
+    el.innerHTML = `
+      <div class="live-top">${label}${conn}</div>
+      <p class="note">Teams scan the QR code and pick their team once; their phone remembers it every week. You can fix any team's numbers below.</p>
+      <div class="actions"><button class="solid" id="qrOpen">Show QR codes</button>
+        <a class="ghost" href="${baseUrl()}?screen" target="_blank" rel="noopener">Open big screen</a>
+        ${forcedEvent ? `<a class="ghost" href="${baseUrl()}">Back to today</a>` : ""}</div>${msg}`;
+  } else if (view === "team") {
+    el.setAttribute("style", tc(state.active));
+    el.innerHTML = `
+      <div class="live-top"><span>Scoring for <b>${esc(state.teams[state.active].name)}</b></span>${conn}</div>
+      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>${msg}`;
+  } else if (view === "pick") {
+    el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
+  } else if (view === "wait") {
+    el.innerHTML = `<p class="note">Joining ${eventId ? "session " + esc(eventLabel(eventId)) : "today's session"}…</p>`;
+  } else if (view === "missing" && !forcedEvent) {
+    el.innerHTML = `
+      <div class="live-top"><h2>Today's session hasn't started</h2>${conn}</div>
+      <p class="note">This page updates by itself as soon as the trainer starts it. Trainer: pick the workout and start it here. The teams from last time carry over.</p>
+      <div class="actions"><select class="date" id="startPick" aria-label="Workout for today">${workoutOptions(startPick)}</select>
+        <button class="solid" id="startToday">Start today's session</button>
+        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>
+      ${msg}`;
+  } else {
+    el.innerHTML = `
+      <h2>${view === "missing" ? "Session not found" : "Live scoring unavailable"}</h2>
+      <p class="note">${view === "missing" ? "There's no session for that date." : esc(liveMsg)}</p>
+      <div class="actions"><a class="ghost" href="${baseUrl()}">Go to today's session</a><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>`;
+  }
+  el.hidden = !el.innerHTML.trim();
+  renderLinks();
+}
+
+// Trainer tools: links for anyone who can't scan the QR code, an extra session, and switching role.
+function renderLinks() {
+  const el = $("linksCard");
+  el.hidden = screenMode || view !== "trainer" || !eventId.startsWith(today());
+  if (el.hidden) return;
+  el.innerHTML = `
+    <h2>Links</h2>
+    <p class="note">For anyone who can't scan the QR code. A team's own link sets its phone to that team.</p>
+    ${state.teams.map((t, i) => `<div class="link-row" style="${tc(i)}"><span class="dot"></span><span class="n">${esc(t.name)}</span>
+      <button class="ghost" data-share="${t.id}" data-label="Send link">Send link</button></div>`).join("")}
+    <div class="actions"><button class="ghost" data-share="" data-label="Send link for everyone">Send link for everyone</button>
+      <button class="ghost" id="screenShare" data-label="Send big-screen link">Send big-screen link</button></div>
+    <h3 class="sub">This phone</h3>
+    <div class="actions"><button class="ghost" id="startExtra">Start extra session</button>
+      <button class="ghost" data-role="">Switch role</button></div>`;
+}
+
+// Trainer only: today's sessions (switch every phone), past sessions (open on this phone), and adding a past one.
+function renderSessions() {
+  const el = $("sessionsCard");
+  el.hidden = screenMode || !(live && getRole() === "trainer" && (view === "trainer" || view === "missing"));
+  if (el.hidden) return;
+  const t = today(), list = sessionList || [];
+  const todays = list.filter(id => id.startsWith(t)), past = list.filter(id => !id.startsWith(t));
+  const row = (id, action) => `<div class="link-row"><span class="n">${esc(eventLabel(id))}${id.startsWith(t) ? "" : " " + id.slice(0, 4)}</span>${action}</div>`;
+  const onScreen = `<span class="note">On screen</span>`;
+  el.innerHTML = `
+    <h2>Sessions</h2>
+    ${sessionList === null ? `<p class="note">Loading…</p>` : `
+    <h3 class="sub">Today</h3>
+    ${todays.length ? todays.map(id => row(id, id === latest ? `<span class="note">Live now</span>` : `<button class="ghost" data-switch="${id}">Switch everyone here</button>`)).join("") : `<p class="note">No session yet today.</p>`}
+    <h3 class="sub">Past sessions</h3>
+    ${past.length ? past.map(id => row(id, id === eventId ? onScreen : `<button class="ghost" data-open="${id}">Open</button>`)).join("") : `<p class="note">None yet.</p>`}`}
+    <h3 class="sub">Add a past session</h3>
+    <p class="note">For results on paper. Pick the date, then type each team's numbers in. It opens only on your phone; the teams' phones stay where they are.</p>
+    <div class="actions"><input type="date" id="pastDate" min="${FIRST_DAY}" max="${t}" class="date"><button class="solid" id="addPast">Add</button><span class="msg" id="pastMsg"></span></div>
+    ${view === "trainer" ? `<h3 class="sub">Session on screen · ${esc(eventLabel(eventId))}</h3>
+    <span id="delArea"><button class="ghost danger" id="delSession">Delete this session</button></span>` : ""}`;
+}
+
+function renderPicker() {
+  $("pickList").innerHTML = state.teams.map((t, i) =>
+    `<button style="${tc(i)}" data-role="${t.id}"><span class="dot"></span>${esc(t.name)}</button>`).join("");
+}
+
+function renderSections() {
+  if (screenMode) {
+    for (const id of ["roundSeg", "board", "teams", "tools", "standCard", "picker"]) $(id).hidden = true;
+    return;
+  }
+  const scoring = ["local", "trainer", "team"].includes(view);
+  $("roundSeg").hidden = !scoring || W.rounds < 2;
+  $("board").hidden = !scoring;
+  $("teams").hidden = $("setupCard").hidden = !(view === "local" || view === "trainer");
+  $("standCard").hidden = !(scoring || view === "pick");
+  $("picker").hidden = view !== "pick";
+  $("tools").hidden = !(view === "local" || view === "trainer" || (view === "missing" && live && getRole() === "trainer"));
+  $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
+}
+
+function renderAll() { renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); }
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b || b.disabled) return;
+  if (b.dataset.round) { state.round = +b.dataset.round; editing = null; }
+  else if (b.dataset.team) { state.active = +b.dataset.team; editing = null; }
+  else if (b.dataset.k) {
+    bump(state.active, b.dataset.k, +b.dataset.d);
+    if (navigator.vibrate) try { navigator.vibrate(8); } catch {}
+  }
+  else if (b.dataset.act) { const [act, sid] = b.dataset.act.split(":"); stationAction(state.active, act, sid); }
+  else if (b.dataset.min) {
+    const [sid, m] = b.dataset.min.split(":"), s = W.stations.find(s => s.id === sid);
+    if (s.measure === "done") {
+      const key = `${sid}_m${m}`, x = val(state.teams[state.active], state.round, key);
+      setValue(state.active, key, !clockStart(state.round) ? (x + 1) % 3 : x === 2 ? (minutesPassed(s) >= +m ? 1 : 0) : 2);
+    }
+    else { emomSel[sid] = +m; editing = null; }
+  }
+  else if (b.dataset.edit) { editing = b.dataset.edit; renderBoard(); return; }
+  else if (b.dataset.remove) { removeTeam(+b.dataset.remove); renderSetup(); }
+  else if (b.dataset.role !== undefined) {
+    setRole(b.dataset.role); editing = null;
+    const i = state.teams.findIndex(t => t.id === b.dataset.role);
+    view = b.dataset.role === "trainer" ? "trainer" : i >= 0 ? "team" : "pick";
+    if (i >= 0) state.active = i;
+    window.scrollTo(0, 0); renderSetup();
+  }
+  else if (b.dataset.share !== undefined) {
+    return share(baseUrl() + (b.dataset.share ? "?team=" + b.dataset.share : ""), b);
+  }
+  else if (b.dataset.qr !== undefined) { qrFor = b.dataset.qr; return renderQrCard(); }
+  else if (b.id === "qrOpen") { qrFor = ""; renderQrCard(); $("qrCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  else if (b.id === "qrClose") { qrFor = null; return renderQrCard(); }
+  else if (b.id === "screenShare") return share(baseUrl() + "?screen", b);
+  else if (b.dataset.switch) return switchSession(b.dataset.switch);
+  else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
+  else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
+  else if (b.id === "clockStart") startClock();
+  else if (b.id === "clockReset") {
+    $("clockArea").innerHTML = `<span class="confirm">Reset the clock? <button class="solid-danger" id="clockYes">Reset</button><button class="ghost" id="clockNo">Cancel</button></span>`;
+    return;
+  }
+  else if (b.id === "clockYes") resetClock();
+  else if (b.id === "clockNo") { renderBoard(); return; }
+  else if (b.dataset.wuse) {
+    const w = byId(b.dataset.wuse); if (!w) return;
+    wMsg = "";
+    if (anyScores()) { wConfirm = { kind: "use", id: w.id }; return renderWorkout(true); }
+    useWorkout(w);
+  }
+  else if (b.id === "wUseYes") { wConfirm = null; useWorkout(byId(b.dataset.w)); }
+  else if (b.id === "wDelYes") { wConfirm = null; deleteWorkout(b.dataset.w); return renderWorkout(true); }
+  else if (b.id === "wNo") { wConfirm = null; return renderWorkout(true); }
+  else if (b.dataset.wdel) { wConfirm = { kind: "del", id: b.dataset.wdel }; return renderWorkout(true); }
+  else if (b.dataset.wcopy) return copyText(JSON.stringify(byId(b.dataset.wcopy), null, 2), b);
+  else if (b.id === "wPrompt") return copyText(LLM_PROMPT, b);
+  else if (b.id === "wCheck") { pasteText = $("wPaste").value; pasteCheck = checkWorkout(pasteText); wMsg = ""; return renderWorkout(true); }
+  else if (b.id === "wSave") return saveChecked(b);
+  else if (b.id === "delSession") {
+    $("delArea").innerHTML = `<span class="confirm">Delete ${esc(eventLabel(eventId))} and all its scores? This can't be undone. <button class="solid-danger" id="delYes">Delete</button><button class="ghost" id="delNo">Cancel</button></span>`;
+    return;
+  }
+  else if (b.id === "delYes") return deleteSession();
+  else if (b.id === "delNo") { renderSessions(); return; }
+  else if (b.id === "startToday" || b.id === "startExtra") return startEvent(b, b.id === "startExtra");
+  else if (b.id === "addTeam") { addTeam(); renderSetup(); }
+  else if (b.id === "reset") {
+    $("resetArea").innerHTML = `<span class="confirm">Clear every count for all teams? <button class="solid-danger" id="resetYes">Reset</button><button class="ghost" id="resetNo">Cancel</button></span>`;
+    return;
+  }
+  else if (b.id === "resetYes" || b.id === "resetNo") {
+    if (b.id === "resetYes") resetAll();
+    $("resetArea").innerHTML = `<button class="ghost danger" id="reset">Reset all counts</button>`;
+  }
+  else return;
+  save(); renderAll();
+});
+
+document.addEventListener("change", e => {
+  if (e.target.id === "startPick") startPick = e.target.value;
+});
+
+document.addEventListener("input", e => {
+  // Editing the pasted text means it has to be checked again before saving.
+  if (e.target.id === "wPaste") { pasteText = e.target.value; if (pasteCheck) { pasteCheck = null; $("wSave")?.remove(); } return; }
+  const i = e.target.dataset.name; if (i === undefined) return;
+  rename(+i, e.target.value.trim() || "Team " + (+i + 1));
+  save(); renderTeams(); renderBoard(); renderStandings(); renderLive();
+});
+
+// Keep the screen awake while counting, where the browser allows it.
+async function wake() { try { if (navigator.wakeLock && document.visibilityState === "visible") await navigator.wakeLock.request("screen"); } catch {} }
+document.addEventListener("visibilitychange", wake);
+wake();
+
+renderSetup(); renderAll();
+if (view !== "local") initLive();
+</script>
+</body></html>
