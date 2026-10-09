@@ -110,6 +110,8 @@ tr.lead td.pts { color: var(--accent); }
 .link-row span.n { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 a.ghost, a.solid { color: inherit; text-decoration: none; display: inline-block; }
 a.solid { color: var(--accent-fg); }
+h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; }
+.date { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 [hidden] { display: none !important; }
 </style>
 </head><body>
@@ -140,6 +142,8 @@ a.solid { color: var(--accent-fg); }
     <div class="tbl-wrap"><table id="standings"></table></div>
     <p class="note">Each column is the team's total over both rounds, with its rank below. Points add up the ranks across the four challenges, so the lowest score wins. Tied teams share a rank.</p>
   </section>
+
+  <section class="card" id="sessionsCard" hidden></section>
 
   <section class="card" id="setupCard">
     <h2>Teams</h2>
@@ -191,7 +195,9 @@ function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catc
 const params = new URLSearchParams(location.search);
 const forcedEvent = (params.get("e") || "").replace(/[^0-9-]/g, "");
 const ROLE_KEY = "team-output-live-role";
-let live = null, eventId = null, stopEvent = null, latest = null, connected = true, liveMsg = "";
+// Match the database rules: sessions dated 2025 to 2029, at most 9 per day.
+const FIRST_DAY = "2025-01-01", MAX_PER_DAY = 9;
+let live = null, eventId = null, stopEvent = null, latest = null, connected = true, liveMsg = "", sessionList = null;
 let view = !FIREBASE_CONFIG || params.has("local") ? "local" : "wait";
 const getRole = () => { try { return localStorage.getItem(ROLE_KEY); } catch { return null; } };
 const setRole = r => { try { r ? localStorage.setItem(ROLE_KEY, r) : localStorage.removeItem(ROLE_KEY); } catch {} };
@@ -220,7 +226,10 @@ async function initLive() {
   try { live = await connect(); }
   catch { view = "error"; liveMsg = "Couldn't reach the live scoreboard. Check the connection and reload."; return renderAll(); }
   live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); renderLive(); });
-  if (forcedEvent) return openEvent(forcedEvent);
+  if (forcedEvent) {
+    live.fb.get(live.fb.ref(live.db, "current")).then(s => { latest = s.val(); renderSessions(); }).catch(() => {});
+    return openEvent(forcedEvent);
+  }
   live.fb.onValue(live.fb.ref(live.db, "current"), s => { latest = s.val(); followToday(); });
   // A page left open since last week moves to today's session when the phone wakes up.
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") followToday(); });
@@ -242,8 +251,9 @@ function openEvent(id) {
 }
 
 function applyRemote(v) {
-  if (!v || !v.teams) { view = "missing"; return renderAll(); }
+  if (!v || !v.teams) { view = "missing"; if (getRole() === "trainer" && !sessionList) loadSessions(); return renderAll(); }
   if (view === "wait") state.round = 0;
+  if (getRole() === "trainer" && !sessionList) loadSessions();
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
   state.teams = ids.map(id => ({
     id, name: v.teams[id].name,
@@ -260,7 +270,7 @@ function applyRemote(v) {
   else view = "pick";
   state.active = Math.min(state.active, state.teams.length - 1);
   if (!editing) renderBoard();
-  renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections();
+  renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions();
   if (!(document.activeElement && document.activeElement.dataset.name !== undefined)) renderSetup();
   save();
 }
@@ -315,19 +325,62 @@ function resetAll() {
   state.teams.forEach(t => t.counts = blankCounts());
 }
 
+// The trainer's list of all sessions, newest first, for switching between them.
+function loadSessions() {
+  live.fb.get(live.fb.ref(live.db, "events"))
+    .then(s => { sessionList = Object.keys(s.val() || {}).sort().reverse(); renderSessions(); })
+    .catch(() => {});
+}
+// A session from today becomes everyone's current one; an older one opens on this phone only.
+function switchSession(id) {
+  if (id.startsWith(today())) {
+    live.fb.set(live.fb.ref(live.db, "current"), id);
+    if (forcedEvent) location.href = baseUrl(); else { latest = id; openEvent(id); }
+  } else location.href = baseUrl() + "?e=" + id;
+}
+// Adds a session for an earlier date (for results from paper) and opens it on this phone only.
+async function addPastSession(date, btn) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date >= today()) { $("pastMsg").textContent = "Pick a date before today."; return; }
+  if (date < FIRST_DAY) { $("pastMsg").textContent = "Pick a date from 2025 on."; return; }
+  btn.disabled = true;
+  try {
+    let id = date;
+    for (let n = 2; (await live.fb.get(live.fb.ref(live.db, "events/" + id))).exists(); n++) {
+      if (n > MAX_PER_DAY) { btn.disabled = false; $("pastMsg").textContent = `That day already has ${MAX_PER_DAY} sessions.`; return; }
+      id = `${date}-${n}`;
+    }
+    const teams = Object.fromEntries(state.teams.map((t, i) => [t.id, { name: t.name.slice(0, 24), order: i }]));
+    await live.fb.set(live.fb.ref(live.db, "events/" + id), { created: Date.now(), teams });
+    location.href = baseUrl() + "?e=" + id;
+  } catch { btn.disabled = false; $("pastMsg").textContent = "Couldn't add it. Check the connection and try again."; }
+}
+
+// Deletes the session on screen with all its scores. Phones on it fall back to today's session.
+async function deleteSession() {
+  const id = eventId; pending.clear(); clearTimeout(flushTimer);
+  await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: null, ...(latest === id ? { current: null } : {}) });
+  sessionList = null; loadSessions();
+  if (forcedEvent) location.href = baseUrl(); else { latest = latest === id ? null : latest; eventId = null; followToday(); }
+}
+
 // Starts today's session, or an extra one the same day, with the teams from the last session this phone saw.
 async function startEvent(btn, extra) {
   btn.disabled = true; btn.textContent = "Starting…";
   try {
     let id = today();
-    if (extra) for (let n = 2; ; n++) { id = `${today()}-${n}`; if (!(await live.fb.get(live.fb.ref(live.db, "events/" + id))).exists()) break; }
+    if (extra) for (let n = 2; ; n++) {
+      if (n > MAX_PER_DAY) throw new Error("full");
+      id = `${today()}-${n}`; if (!(await live.fb.get(live.fb.ref(live.db, "events/" + id))).exists()) break;
+    }
     const teams = Object.fromEntries(state.teams.map((t, i) => [t.id, { name: t.name.slice(0, 24), order: i }]));
-    await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: { created: Date.now(), teams }, current: id });
     setRole("trainer");
+    await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: { created: Date.now(), teams }, current: id });
+    sessionList = null; loadSessions();
     if (forcedEvent) location.href = baseUrl(); else { latest = id; openEvent(id); }
-  } catch {
+  } catch (e) {
     btn.disabled = false; btn.textContent = extra ? "Start extra session" : "Start today's session";
-    liveMsg = "Couldn't start the session. Check the connection and try again."; renderLive();
+    liveMsg = e.message === "full" ? `There are already ${MAX_PER_DAY} sessions today, which is the most a day can have.` : "Couldn't start the session. Check the connection and try again.";
+    renderLive();
   }
 }
 
@@ -419,6 +472,12 @@ function renderLive() {
     el.innerHTML = FIREBASE_CONFIG ? `
       <div class="live-top"><h2>Team phones</h2><a class="solid" href="${baseUrl()}">Back to live scoring</a></div>
       <p class="note">This phone is counting on its own. Nothing here is shared.</p>` : "";
+  } else if (view === "trainer" && !eventId.startsWith(today())) {
+    el.innerHTML = `
+      <div class="live-top">${label} ${eventId.slice(0, 4)}${conn}</div>
+      <p class="note">Past session, open only on your phone. Pick each team with the tabs below and type in its numbers for both rounds. The teams' phones aren't affected.</p>
+      <div class="actions"><a class="solid" href="${baseUrl()}">Back to today</a></div>
+      <span id="delArea"><button class="ghost danger" id="delSession">Delete this session</button></span>${msg}`;
   } else if (view === "trainer") {
     el.innerHTML = `
       <div class="live-top">${label}${conn}</div>
@@ -427,7 +486,9 @@ function renderLive() {
         <button class="ghost" data-share="${t.id}" data-label="Send link">Send link</button></div>`).join("")}
       <div class="actions"><button class="ghost" data-share="" data-label="Send link for everyone">Send link for everyone</button>
         <button class="ghost" id="startExtra">Start extra session</button>
-        <button class="ghost" data-role="">Switch role</button></div>${msg}`;
+        <button class="ghost" data-role="">Switch role</button>
+        ${forcedEvent ? `<a class="ghost" href="${baseUrl()}">Back to today</a>` : ""}</div>
+      <span id="delArea"><button class="ghost danger" id="delSession">Delete this session</button></span>${msg}`;
   } else if (view === "team") {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
@@ -442,7 +503,8 @@ function renderLive() {
       <div class="live-top"><h2>Today's session hasn't started</h2>${conn}</div>
       <p class="note">This page updates by itself as soon as the trainer starts it. Trainer: start it here, and the teams from last time carry over.</p>
       <div class="actions"><button class="solid" id="startToday">Start today's session</button>
-        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>${msg}`;
+        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>
+      ${msg}`;
   } else {
     el.innerHTML = `
       <h2>${view === "missing" ? "Session not found" : "Live scoring unavailable"}</h2>
@@ -450,6 +512,27 @@ function renderLive() {
       <div class="actions"><a class="ghost" href="${baseUrl()}">Go to today's session</a><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>`;
   }
   el.hidden = !el.innerHTML.trim();
+}
+
+// Trainer only: today's sessions (switch every phone), past sessions (open on this phone), and adding a past one.
+function renderSessions() {
+  const el = $("sessionsCard");
+  el.hidden = !(live && getRole() === "trainer" && (view === "trainer" || view === "missing"));
+  if (el.hidden) return;
+  const t = today(), list = sessionList || [];
+  const todays = list.filter(id => id.startsWith(t)), past = list.filter(id => !id.startsWith(t));
+  const row = (id, action) => `<div class="link-row"><span class="n">${esc(eventLabel(id))}${id.startsWith(t) ? "" : " " + id.slice(0, 4)}</span>${action}</div>`;
+  const onScreen = `<span class="note">On screen</span>`;
+  el.innerHTML = `
+    <h2>Sessions</h2>
+    ${sessionList === null ? `<p class="note">Loading…</p>` : `
+    <h3 class="sub">Today</h3>
+    ${todays.length ? todays.map(id => row(id, id === latest ? `<span class="note">Live now</span>` : `<button class="ghost" data-switch="${id}">Switch everyone here</button>`)).join("") : `<p class="note">No session yet today.</p>`}
+    <h3 class="sub">Past sessions</h3>
+    ${past.length ? past.map(id => row(id, id === eventId ? onScreen : `<button class="ghost" data-open="${id}">Open</button>`)).join("") : `<p class="note">None yet.</p>`}`}
+    <h3 class="sub">Add a past session</h3>
+    <p class="note">For results on paper. Pick the date, then type each team's numbers in. It opens only on your phone; the teams' phones stay where they are.</p>
+    <div class="actions"><input type="date" id="pastDate" min="${FIRST_DAY}" max="${t}" class="date"><button class="solid" id="addPast">Add</button><span class="msg" id="pastMsg"></span></div>`;
 }
 
 function renderPicker() {
@@ -465,7 +548,7 @@ function renderSections() {
   $("picker").hidden = view !== "pick";
 }
 
-function renderAll() { renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); }
+function renderAll() { renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); }
 
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
@@ -487,6 +570,15 @@ document.addEventListener("click", e => {
   else if (b.dataset.share !== undefined) {
     return share(baseUrl() + (b.dataset.share ? "?team=" + b.dataset.share : ""), b);
   }
+  else if (b.dataset.switch) return switchSession(b.dataset.switch);
+  else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
+  else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
+  else if (b.id === "delSession") {
+    $("delArea").innerHTML = `<span class="confirm">Delete ${esc(eventLabel(eventId))} and all its scores? This can't be undone. <button class="solid-danger" id="delYes">Delete</button><button class="ghost" id="delNo">Cancel</button></span>`;
+    return;
+  }
+  else if (b.id === "delYes") return deleteSession();
+  else if (b.id === "delNo") { renderLive(); return; }
   else if (b.id === "startToday" || b.id === "startExtra") return startEvent(b, b.id === "startExtra");
   else if (b.id === "addTeam") { addTeam(); renderSetup(); }
   else if (b.id === "reset") {
