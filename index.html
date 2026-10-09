@@ -1,0 +1,518 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Team Output Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap">
+<style>
+/* Layout: one-column phone scoreboard. Header + round switch, team tabs, 2x2 station counters, standings table, team setup. */
+:root {
+  --bg: #eef0ec;
+  --surface: #ffffff;
+  --fg: #16191a;
+  --muted: #5f6763;
+  --line: #d3d8d3;
+  --accent: #1f6feb;
+  --accent-fg: #ffffff;
+  --press: #e3e7e2;
+  --danger: #c2321f;
+  --t1: #1f6feb; --t2: #d9480f; --t3: #2b8a3e; --t4: #9c36b5; --t5: #c08a00; --t6: #0c8599;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
+  color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
+  color-scheme: dark }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; -webkit-tap-highlight-color: transparent; }
+.wrap { max-width: 640px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 40px; display: flex; flex-direction: column; gap: 18px; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; touch-action: manipulation; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 2rem; line-height: 1; margin: 0; letter-spacing: .01em; text-transform: uppercase; }
+h1 small { display: block; font-family: var(--body); font-weight: 600; font-size: .75rem; letter-spacing: .08em; color: var(--muted); margin-top: 4px; }
+h2 { font-family: var(--display); font-weight: 800; font-size: 1.3rem; text-transform: uppercase; letter-spacing: .03em; margin: 0; }
+
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { font-family: var(--display); font-weight: 800; font-size: 1.05rem; letter-spacing: .04em; text-transform: uppercase; padding: 8px 16px; border-radius: 999px; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+
+.teams { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.teams button { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); font-weight: 600; }
+.teams button .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); }
+.teams button[aria-pressed="true"] { border-color: var(--tc); box-shadow: inset 0 0 0 1px var(--tc); }
+
+.board { border-top: 6px solid var(--tc); background: var(--surface); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.board-head .name { font-family: var(--display); font-weight: 800; font-size: 1.5rem; text-transform: uppercase; }
+.board-head .rnd { color: var(--muted); font-size: .85rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 360px) { .grid { grid-template-columns: 1fr; } }
+
+.st { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.st-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.st-name { font-weight: 600; font-size: .9rem; }
+.st-unit { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.st-info { font-size: .72rem; color: var(--muted); margin-top: -6px; }
+.st-val { font-family: var(--display); font-weight: 800; font-size: 3.2rem; line-height: .95; font-variant-numeric: tabular-nums; text-align: center; width: 100%; padding: 2px 0; border-radius: 8px; }
+.st-val:active { background: var(--press); }
+.st-input { font-family: var(--display); font-weight: 800; font-size: 2.6rem; text-align: center; width: 100%; border: 2px solid var(--accent); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 2px 0; }
+.st-other { text-align: center; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.btns button { padding: 12px 0; border-radius: 10px; background: var(--press); font-family: var(--display); font-weight: 800; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.btns button.plus { background: var(--tc); color: var(--accent-fg); }
+.btns button:active { transform: scale(.96); }
+.minus-row { display: flex; justify-content: center; }
+.minus-row button { font-size: .8rem; color: var(--muted); padding: 4px 10px; border-radius: 8px; }
+.minus-row button:active { background: var(--press); }
+
+.card { background: var(--surface); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th, td { padding: 8px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td .rk { display: block; font-size: .7rem; color: var(--muted); }
+td.pts { font-family: var(--display); font-weight: 800; font-size: 1.2rem; }
+tr.lead td.pts { color: var(--accent); }
+.tname { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.tname .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc); }
+.note { font-size: .8rem; color: var(--muted); margin: 0; line-height: 1.45; }
+
+.setup-row { display: flex; gap: 8px; align-items: center; }
+.setup-row input { flex: 1; min-width: 0; font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.setup-row .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
+.ghost { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); font-weight: 600; font-size: .9rem; }
+.ghost.danger { color: var(--danger); border-color: var(--danger); }
+.solid-danger { padding: 9px 12px; border-radius: 8px; background: var(--danger); color: var(--surface); font-weight: 600; font-size: .9rem; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.confirm { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: .9rem; }
+@media (prefers-reduced-motion: reduce) { .btns button:active { transform: none; } }
+.live { border-left: 6px solid var(--tc, var(--accent)); }
+.live-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.code { font-family: var(--display); font-weight: 800; font-size: 1.6rem; letter-spacing: .12em; }
+.conn { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--muted); }
+.conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--t3); }
+.conn.off::before { background: var(--danger); }
+.solid { padding: 11px 14px; border-radius: 10px; background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pick button { padding: 18px 10px; border-radius: 12px; border: 2px solid var(--tc); background: var(--surface); font-family: var(--display); font-weight: 800; font-size: 1.3rem; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pick .dot, .link-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
+.link-row { display: flex; align-items: center; gap: 8px; }
+.link-row span.n { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.ghost, a.solid { color: inherit; text-decoration: none; display: inline-block; }
+a.solid { color: var(--accent-fg); }
+[hidden] { display: none !important; }
+</style>
+</head><body>
+
+<div class="wrap">
+  <header>
+    <h1>Team Output<small>Thursday Athletic · 4 teams of 3 · 2 rounds</small></h1>
+    <div class="seg" role="group" aria-label="Round" id="roundSeg">
+      <button id="r0" data-round="0">Runde 1</button>
+      <button id="r1" data-round="1">Runde 2</button>
+    </div>
+  </header>
+
+  <section class="card live" id="live" hidden></section>
+
+  <section class="card" id="picker" hidden>
+    <h2>Which team are you?</h2>
+    <div class="pick" id="pickList"></div>
+    <div class="actions"><button class="ghost" data-role="trainer">I'm the trainer</button></div>
+  </section>
+
+  <nav class="teams" id="teams" aria-label="Teams"></nav>
+
+  <section class="board" id="board" aria-live="polite"></section>
+
+  <section class="card" id="standCard">
+    <h2>Standings</h2>
+    <div class="tbl-wrap"><table id="standings"></table></div>
+    <p class="note">Each column is the team's total over both rounds, with its rank below. Points add up the ranks across the four challenges, so the lowest score wins. Tied teams share a rank.</p>
+  </section>
+
+  <section class="card" id="setupCard">
+    <h2>Teams</h2>
+    <div id="setup" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="actions">
+      <button class="ghost" id="addTeam">Add team</button>
+      <span id="resetArea"><button class="ghost danger" id="reset">Reset all counts</button></span>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+// Live scoring: paste the firebaseConfig block from the Firebase console here.
+// While this is null the app works exactly like v1.0, on one phone only.
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDBSdlwWWlIypP7_EiDb6FrHmpH_ElxnzQ",
+  authDomain: "team-output-counter.firebaseapp.com",
+  databaseURL: "https://team-output-counter-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "team-output-counter",
+  storageBucket: "team-output-counter.firebasestorage.app",
+  messagingSenderId: "112958855502",
+  appId: "1:112958855502:web:2cd59244a8b4815ffba61f"
+};
+const FB = "https://www.gstatic.com/firebasejs/10.12.2/";
+
+const STATIONS = [
+  { id: "erg", name: "Erg",       unit: "cals",   steps: [1, 5, 10],    info: "90s/person · Ski, Row, Bike" },
+  { id: "wb",  name: "Wallballs", unit: "reps",   steps: [1, 5, 10],    info: "5 min AMRAP · max 20/ball" },
+  { id: "run", name: "Run",       unit: "meters", steps: [10, 50, 100], info: "5 min · +1% incline/min" },
+  { id: "bbj", name: "BBJs",      unit: "lanes",  steps: [1, 2, 5],     info: "2 work · 1 rest · 6 m lane" },
+];
+const KEY = "team-output-live-v1"; // own key: both apps share the iamsartor.github.io address, so they must not share saved data
+const COLORS = 6;
+
+function blankCounts() { return [0, 1].map(() => Object.fromEntries(STATIONS.map(s => [s.id, 0]))); }
+const newId = () => Math.random().toString(36).slice(2, 9);
+function newTeam(n) { return { id: newId(), name: "Team " + n, counts: blankCounts() }; }
+function defaultState() { return { round: 0, active: 0, teams: [1, 2, 3, 4].map(newTeam) }; }
+
+let state;
+try { state = JSON.parse(localStorage.getItem(KEY)) || defaultState(); } catch { state = defaultState(); }
+if (!state.teams || !state.teams.length) state = defaultState();
+function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} }
+
+// Live sessions. Each day gets its own session, named by date (2026-10-16), plus 2026-10-16-2 and so on
+// for extra sessions. "current" points at the newest one, so the plain link always opens today's session
+// and nothing ever needs resetting. Team ids carry over, so a phone remembers its team week to week.
+// view: "local" (one phone, like v1.0), "wait", "missing", "pick", "trainer", "team", "error".
+const params = new URLSearchParams(location.search);
+const forcedEvent = (params.get("e") || "").replace(/[^0-9-]/g, "");
+const ROLE_KEY = "team-output-live-role";
+let live = null, eventId = null, stopEvent = null, latest = null, connected = true, liveMsg = "";
+let view = !FIREBASE_CONFIG || params.has("local") ? "local" : "wait";
+const getRole = () => { try { return localStorage.getItem(ROLE_KEY); } catch { return null; } };
+const setRole = r => { try { r ? localStorage.setItem(ROLE_KEY, r) : localStorage.removeItem(ROLE_KEY); } catch {} };
+if (params.get("team")) setRole(params.get("team"));
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+function eventLabel(id) {
+  const day = new Date(id.slice(0, 10) + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return id.length > 10 ? `${day} · extra ${id.slice(11)}` : day;
+}
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tc = i => `--tc: var(--t${(i % COLORS) + 1})`;
+const total = (t, sid) => t.counts[0][sid] + t.counts[1][sid];
+const baseUrl = () => location.origin + location.pathname;
+let editing = null;
+
+async function connect() {
+  const [app, fb] = await Promise.all([import(FB + "firebase-app.js"), import(FB + "firebase-database.js")]);
+  return { fb, db: fb.getDatabase(app.initializeApp(FIREBASE_CONFIG)) };
+}
+const path = (...parts) => live.fb.ref(live.db, ["events", eventId, ...parts].join("/"));
+
+async function initLive() {
+  if (!FIREBASE_CONFIG) { view = "error"; liveMsg = "Live scoring isn't switched on in this copy of the app yet."; return renderAll(); }
+  try { live = await connect(); }
+  catch { view = "error"; liveMsg = "Couldn't reach the live scoreboard. Check the connection and reload."; return renderAll(); }
+  live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); renderLive(); });
+  if (forcedEvent) return openEvent(forcedEvent);
+  live.fb.onValue(live.fb.ref(live.db, "current"), s => { latest = s.val(); followToday(); });
+  // A page left open since last week moves to today's session when the phone wakes up.
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") followToday(); });
+}
+
+function followToday() {
+  if (forcedEvent) return;
+  const t = today();
+  openEvent(typeof latest === "string" && latest.startsWith(t) ? latest : t);
+}
+
+function openEvent(id) {
+  if (id === eventId) return;
+  flush(); pending.clear(); editing = null;
+  if (stopEvent) stopEvent();
+  eventId = id; view = "wait"; renderAll();
+  stopEvent = live.fb.onValue(path(), snap => applyRemote(snap.val()),
+    () => { view = "error"; liveMsg = "This session can't be opened. Check the connection and reload."; renderAll(); });
+}
+
+function applyRemote(v) {
+  if (!v || !v.teams) { view = "missing"; return renderAll(); }
+  if (view === "wait") state.round = 0;
+  const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
+  state.teams = ids.map(id => ({
+    id, name: v.teams[id].name,
+    counts: [0, 1].map(r => Object.fromEntries(STATIONS.map(s => [s.id, v.counts?.[id]?.["r" + r]?.[s.id] || 0]))),
+  }));
+  // Taps not yet sent win over what the server has, so the counter never jumps back.
+  for (const [k, val] of pending) {
+    const [id, r, sid] = k.split("/"), t = state.teams.find(t => t.id === id);
+    if (t) t.counts[+r.slice(1)][sid] = val;
+  }
+  const role = getRole(), mine = ids.indexOf(role);
+  if (role === "trainer") view = "trainer";
+  else if (mine >= 0) { view = "team"; state.active = mine; }
+  else view = "pick";
+  state.active = Math.min(state.active, state.teams.length - 1);
+  if (!editing) renderBoard();
+  renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections();
+  if (!(document.activeElement && document.activeElement.dataset.name !== undefined)) renderSetup();
+  save();
+}
+
+// Live counts are sent as totals about a second after the last tap: ten quick taps become one write,
+// and a lost write can't make scores drift because the next one carries the full total.
+const pending = new Map();
+let flushTimer = null;
+function queue(i, sid, v) {
+  const t = state.teams[i];
+  t.counts[state.round][sid] = v;
+  pending.set(`${t.id}/r${state.round}/${sid}`, v);
+  clearTimeout(flushTimer); flushTimer = setTimeout(flush, 1000);
+}
+function flush() {
+  clearTimeout(flushTimer);
+  if (!live || !pending.size) return;
+  const sent = new Map(pending);
+  live.fb.update(path(), Object.fromEntries([...sent].map(([k, v]) => ["counts/" + k, v])))
+    .then(() => { for (const [k, v] of sent) if (pending.get(k) === v) pending.delete(k); })
+    .catch(() => { flushTimer = setTimeout(flush, 3000); });
+}
+// Send right away when the phone is locked or the tab is closed.
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+addEventListener("pagehide", flush);
+
+// Every change goes through these, so the same buttons work on one phone or in a live session.
+function bump(i, sid, d) {
+  const v = Math.max(0, state.teams[i].counts[state.round][sid] + d);
+  if (live) return queue(i, sid, v);
+  state.teams[i].counts[state.round][sid] = v;
+}
+function setValue(i, sid, v) {
+  if (live) return queue(i, sid, v);
+  state.teams[i].counts[state.round][sid] = v;
+}
+function rename(i, name) {
+  if (live) return live.fb.set(path("teams", state.teams[i].id, "name"), name.slice(0, 24));
+  state.teams[i].name = name;
+}
+function addTeam() {
+  if (live) return live.fb.set(path("teams", newId()), { name: "Team " + (state.teams.length + 1), order: Date.now() });
+  state.teams.push(newTeam(state.teams.length + 1)); state.active = state.teams.length - 1;
+}
+function removeTeam(i) {
+  if (live) { const id = state.teams[i].id; for (const k of [...pending.keys()]) if (k.startsWith(id + "/")) pending.delete(k); return live.fb.update(path(), { ["teams/" + id]: null, ["counts/" + id]: null }); }
+  state.teams.splice(i, 1); state.active = Math.min(state.active, state.teams.length - 1);
+}
+function resetAll() {
+  state.round = 0;
+  if (live) { pending.clear(); clearTimeout(flushTimer); return live.fb.set(path("counts"), null); }
+  state.teams.forEach(t => t.counts = blankCounts());
+}
+
+// Starts today's session, or an extra one the same day, with the teams from the last session this phone saw.
+async function startEvent(btn, extra) {
+  btn.disabled = true; btn.textContent = "Starting…";
+  try {
+    let id = today();
+    if (extra) for (let n = 2; ; n++) { id = `${today()}-${n}`; if (!(await live.fb.get(live.fb.ref(live.db, "events/" + id))).exists()) break; }
+    const teams = Object.fromEntries(state.teams.map((t, i) => [t.id, { name: t.name.slice(0, 24), order: i }]));
+    await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: { created: Date.now(), teams }, current: id });
+    setRole("trainer");
+    if (forcedEvent) location.href = baseUrl(); else { latest = id; openEvent(id); }
+  } catch {
+    btn.disabled = false; btn.textContent = extra ? "Start extra session" : "Start today's session";
+    liveMsg = "Couldn't start the session. Check the connection and try again."; renderLive();
+  }
+}
+
+async function share(url, btn) {
+  try {
+    if (navigator.share) await navigator.share({ title: "Team Output", url });
+    else { await navigator.clipboard.writeText(url); btn.textContent = "Copied"; setTimeout(() => btn.textContent = btn.dataset.label, 1500); }
+  } catch {}
+}
+
+function renderRound() {
+  [0, 1].forEach(r => $("r" + r).setAttribute("aria-pressed", state.round === r));
+}
+
+function renderTeams() {
+  $("teams").innerHTML = state.teams.map((t, i) =>
+    `<button style="${tc(i)}" data-team="${i}" aria-pressed="${i === state.active}"><span class="dot"></span>${esc(t.name)}</button>`).join("");
+}
+
+function renderBoard() {
+  const i = state.active, t = state.teams[i], r = state.round, other = 1 - r;
+  const board = $("board");
+  if (!t) { board.innerHTML = ""; return; }
+  board.setAttribute("style", tc(i));
+  board.innerHTML = `
+    <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">Runde ${r + 1}</span></div>
+    <div class="grid">${STATIONS.map(s => `
+      <div class="st">
+        <div class="st-top"><span class="st-name">${s.name}</span><span class="st-unit">${s.unit}</span></div>
+        <div class="st-info">${s.info}</div>
+        ${editing === s.id
+          ? `<input class="st-input" id="edit-${s.id}" type="number" inputmode="numeric" min="0" value="${t.counts[r][s.id]}" aria-label="${s.name} ${s.unit}">`
+          : `<button class="st-val" data-edit="${s.id}" aria-label="${s.name}: ${t.counts[r][s.id]} ${s.unit}. Tap to type a number">${t.counts[r][s.id]}</button>`}
+        <div class="btns">${s.steps.map(n => `<button class="plus" data-st="${s.id}" data-d="${n}">+${n}</button>`).join("")}</div>
+        <div class="minus-row"><button data-st="${s.id}" data-d="${-s.steps[0]}">Undo &minus;${s.steps[0]}</button></div>
+        <div class="st-other">Runde ${other + 1}: ${t.counts[other][s.id]} · Total ${total(t, s.id)}</div>
+      </div>`).join("")}
+    </div>`;
+  if (editing) {
+    const inp = $("edit-" + editing);
+    inp.focus(); inp.select();
+    const commit = () => {
+      const v = Math.max(0, Math.min(100000, Math.round(Number(inp.value) || 0)));
+      setValue(state.active, editing, v);
+      editing = null; save(); renderAll();
+    };
+    inp.addEventListener("blur", commit, { once: true });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") inp.blur(); });
+  }
+}
+
+function ranks(sid) {
+  const vals = state.teams.map(t => total(t, sid));
+  return vals.map(v => 1 + vals.filter(x => x > v).length);
+}
+
+function renderStandings() {
+  if (!state.teams.length) { $("standings").innerHTML = ""; return; }
+  const rk = Object.fromEntries(STATIONS.map(s => [s.id, ranks(s.id)]));
+  const rows = state.teams.map((t, i) => ({ t, i, pts: STATIONS.reduce((a, s) => a + rk[s.id][i], 0) }));
+  rows.sort((a, b) => a.pts - b.pts);
+  const any = state.teams.some(t => STATIONS.some(s => total(t, s.id) > 0));
+  const best = rows[0].pts;
+  $("standings").innerHTML = `
+    <thead><tr><th>Team</th>${STATIONS.map(s => `<th>${s.name}<br>${s.unit}</th>`).join("")}<th>Points</th></tr></thead>
+    <tbody>${rows.map(({ t, i, pts }) => `
+      <tr class="${any && pts === best ? "lead" : ""}">
+        <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span></td>
+        ${STATIONS.map(s => `<td>${total(t, s.id)}<span class="rk">#${rk[s.id][i]}</span></td>`).join("")}
+        <td class="pts">${pts}</td>
+      </tr>`).join("")}</tbody>`;
+}
+
+function renderSetup() {
+  $("setup").innerHTML = state.teams.map((t, i) => `
+    <div class="setup-row" style="${tc(i)}">
+      <span class="dot"></span>
+      <input id="name-${t.id}" data-name="${i}" value="${esc(t.name)}" aria-label="Team ${i + 1} name" maxlength="24">
+      ${state.teams.length > 1 ? `<button class="ghost" data-remove="${i}" aria-label="Remove ${esc(t.name)}">Remove</button>` : ""}
+    </div>`).join("");
+}
+
+function renderLive() {
+  const el = $("live"), msg = liveMsg ? `<p class="note">${esc(liveMsg)}</p>` : "";
+  const conn = `<span class="conn${connected ? "" : " off"}">${connected ? "Live" : "Offline, will sync"}</span>`;
+  const label = eventId ? `<span>Session <b>${esc(eventLabel(eventId))}</b></span>` : "";
+  el.removeAttribute("style");
+  if (view === "local") {
+    el.innerHTML = FIREBASE_CONFIG ? `
+      <div class="live-top"><h2>Team phones</h2><a class="solid" href="${baseUrl()}">Back to live scoring</a></div>
+      <p class="note">This phone is counting on its own. Nothing here is shared.</p>` : "";
+  } else if (view === "trainer") {
+    el.innerHTML = `
+      <div class="live-top">${label}${conn}</div>
+      <p class="note">Teams open the counter link and pick their team once. After that their phone remembers it every week. To set it for them, send each team its own link. You can fix any team's numbers here.</p>
+      ${state.teams.map((t, i) => `<div class="link-row" style="${tc(i)}"><span class="dot"></span><span class="n">${esc(t.name)}</span>
+        <button class="ghost" data-share="${t.id}" data-label="Send link">Send link</button></div>`).join("")}
+      <div class="actions"><button class="ghost" data-share="" data-label="Send link for everyone">Send link for everyone</button>
+        <button class="ghost" id="startExtra">Start extra session</button>
+        <button class="ghost" data-role="">Switch role</button></div>${msg}`;
+  } else if (view === "team") {
+    el.setAttribute("style", tc(state.active));
+    el.innerHTML = `
+      <div class="live-top"><span>Scoring for <b>${esc(state.teams[state.active].name)}</b></span>${conn}</div>
+      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>${msg}`;
+  } else if (view === "pick") {
+    el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
+  } else if (view === "wait") {
+    el.innerHTML = `<p class="note">Joining ${eventId ? "session " + esc(eventLabel(eventId)) : "today's session"}…</p>`;
+  } else if (view === "missing" && !forcedEvent) {
+    el.innerHTML = `
+      <div class="live-top"><h2>Today's session hasn't started</h2>${conn}</div>
+      <p class="note">This page updates by itself as soon as the trainer starts it. Trainer: start it here, and the teams from last time carry over.</p>
+      <div class="actions"><button class="solid" id="startToday">Start today's session</button>
+        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>${msg}`;
+  } else {
+    el.innerHTML = `
+      <h2>${view === "missing" ? "Session not found" : "Live scoring unavailable"}</h2>
+      <p class="note">${view === "missing" ? "There's no session for that date." : esc(liveMsg)}</p>
+      <div class="actions"><a class="ghost" href="${baseUrl()}">Go to today's session</a><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>`;
+  }
+  el.hidden = !el.innerHTML.trim();
+}
+
+function renderPicker() {
+  $("pickList").innerHTML = state.teams.map((t, i) =>
+    `<button style="${tc(i)}" data-role="${t.id}"><span class="dot"></span>${esc(t.name)}</button>`).join("");
+}
+
+function renderSections() {
+  const scoring = ["local", "trainer", "team"].includes(view);
+  $("roundSeg").hidden = $("board").hidden = !scoring;
+  $("teams").hidden = $("setupCard").hidden = !(view === "local" || view === "trainer");
+  $("standCard").hidden = !(scoring || view === "pick");
+  $("picker").hidden = view !== "pick";
+}
+
+function renderAll() { renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); }
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.round) { state.round = +b.dataset.round; editing = null; }
+  else if (b.dataset.team) { state.active = +b.dataset.team; editing = null; }
+  else if (b.dataset.st) {
+    bump(state.active, b.dataset.st, +b.dataset.d);
+    if (navigator.vibrate) try { navigator.vibrate(8); } catch {}
+  }
+  else if (b.dataset.edit) { editing = b.dataset.edit; renderBoard(); return; }
+  else if (b.dataset.remove) { removeTeam(+b.dataset.remove); renderSetup(); }
+  else if (b.dataset.role !== undefined) {
+    setRole(b.dataset.role); editing = null;
+    const i = state.teams.findIndex(t => t.id === b.dataset.role);
+    view = b.dataset.role === "trainer" ? "trainer" : i >= 0 ? "team" : "pick";
+    if (i >= 0) state.active = i;
+    window.scrollTo(0, 0); renderSetup();
+  }
+  else if (b.dataset.share !== undefined) {
+    return share(baseUrl() + (b.dataset.share ? "?team=" + b.dataset.share : ""), b);
+  }
+  else if (b.id === "startToday" || b.id === "startExtra") return startEvent(b, b.id === "startExtra");
+  else if (b.id === "addTeam") { addTeam(); renderSetup(); }
+  else if (b.id === "reset") {
+    $("resetArea").innerHTML = `<span class="confirm">Clear every count for all teams? <button class="solid-danger" id="resetYes">Reset</button><button class="ghost" id="resetNo">Cancel</button></span>`;
+    return;
+  }
+  else if (b.id === "resetYes" || b.id === "resetNo") {
+    if (b.id === "resetYes") resetAll();
+    $("resetArea").innerHTML = `<button class="ghost danger" id="reset">Reset all counts</button>`;
+  }
+  else return;
+  save(); renderAll();
+});
+
+document.addEventListener("input", e => {
+  const i = e.target.dataset.name; if (i === undefined) return;
+  rename(+i, e.target.value.trim() || "Team " + (+i + 1));
+  save(); renderTeams(); renderBoard(); renderStandings(); renderLive();
+});
+
+// Keep the screen awake while counting, where the browser allows it.
+async function wake() { try { if (navigator.wakeLock && document.visibilityState === "visible") await navigator.wakeLock.request("screen"); } catch {} }
+document.addEventListener("visibilitychange", wake);
+wake();
+
+renderSetup(); renderAll();
+if (view !== "local") initLive();
+</script>
+</body></html>
