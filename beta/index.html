@@ -80,6 +80,9 @@ h2 { font-family: var(--display); font-weight: 800; font-size: 1.3rem; text-tran
 .tools > summary::after { content: "Show"; font-size: .8rem; font-weight: 600; color: var(--muted); }
 .tools[open] > summary::after { content: "Hide"; }
 .tools > summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.guide h3 { font-size: 1rem; margin: 8px 0 0; }
+.guide p, .guide li { font-size: .9rem; line-height: 1.45; margin: 0; }
+.guide ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; }
 .tools-body { display: flex; flex-direction: column; gap: 18px; margin-top: 18px; }
 .tbl-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: .9rem; }
@@ -129,11 +132,23 @@ h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; co
 .pair > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .clockbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
 .clock-val { font-family: var(--display); font-weight: 800; font-size: 2rem; font-variant-numeric: tabular-nums; line-height: 1; }
+.clock-in { width: 7ch; font-size: 1.8rem; }
+.nownext { border-radius: 10px; background: var(--press); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+.nn-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.nn-row b { font-size: 1.15rem; flex: 1; min-width: 0; }
+.nn-row.next { color: var(--muted); font-size: .9rem; }
+.nn-l { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); width: 3.2em; flex: none; }
+.nn-t { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.nownext.big { padding: 14px 20px; gap: 8px; margin-bottom: 18px; }
+.nownext.big .nn-row b { font-size: clamp(1.6rem, 4vw, 4rem); }
+.nownext.big .nn-t { font-size: clamp(1.6rem, 4vw, 4rem); }
+.nownext.big .nn-row.next { font-size: clamp(1.1rem, 2.4vw, 2.4rem); }
+.nownext.big .nn-l { font-size: clamp(.8rem, 1.4vw, 1.3rem); }
 .mins { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
 .mins button { border: 1px solid var(--line); border-radius: 10px; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
 .mins b { font-size: .7rem; color: var(--muted); font-weight: 600; }
 .mins span { font-size: .68rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mins i { font-style: normal; font-family: var(--display); font-weight: 800; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.mins i { font-style: normal; font-family: var(--display); font-weight: 800; font-size: 1.35rem; font-variant-numeric: tabular-nums; min-height: 1.35em; }
 .mins button.sel { border: 2px solid var(--tc); }
 .mins button.now { background: var(--press); }
 .mins button.ok i { color: var(--t3); }
@@ -241,6 +256,12 @@ body.screen header { display: none; }
       </section>
     </div>
   </details>
+
+  <!-- A short guide: team phones see the team part, the trainer (and a phone on its own) sees everything. -->
+  <details class="tools" id="help" hidden>
+    <summary>How it works</summary>
+    <div class="tools-body"><section class="card guide" id="helpCard"></section></div>
+  </details>
 </div>
 
 <script type="module">
@@ -309,28 +330,30 @@ const TYPES = { count: "max", time: "for time", amrap: "rounds + reps", emom: "E
 // Checks a workout (from this file or a saved session) and fills in defaults. Returns null if it's unusable.
 function normWorkout(w) {
   if (!w || typeof w !== "object" || !Array.isArray(w.stations)) return null;
+  // Workouts come from pasted text and the shared database, so their text never keeps < or >.
+  const txt = (x, n) => String(x).replace(/[<>]/g, "").slice(0, n);
   const int = (x, lo, hi, d) => Number.isFinite(+x) && x !== null && x !== "" ? Math.max(lo, Math.min(hi, Math.round(+x))) : d;
   const stations = w.stations.filter(s => s && /^[a-z0-9]{1,8}$/.test(s.id) && TYPES[s.type || "count"]).map(s => {
     const steps = Array.isArray(s.steps) && s.steps.length ? s.steps.slice(0, 3).map(n => int(n, 1, 1000, 1)) : [1, 5, 10];
-    const o = { id: s.id, name: String(s.name || s.id).slice(0, 30), type: s.type || "count", info: String(s.info || "").slice(0, 120), steps };
-    if (o.type === "count") o.unit = String(s.unit || "reps").slice(0, 12);
+    const o = { id: s.id, name: txt(s.name || s.id, 30), type: s.type || "count", info: txt(s.info || "", 120), steps };
+    if (o.type === "count") o.unit = txt(s.unit || "reps", 12);
     if (o.type === "time" || o.type === "amrap") o.cap = int(s.cap === undefined ? 0 : parseCap(s.cap), 0, 36000, 0);
     if (o.type === "time" && s.totalReps) o.totalReps = int(s.totalReps, 1, 100000, 0);
     // A team goal ("120 team reps", "2000 m"): teams count towards it and the time is taken when they reach it.
-    if (o.type === "time" && s.target) { o.target = int(s.target, 1, 100000, 0); o.unit = String(s.unit || "reps").slice(0, 12); o.totalReps = o.totalReps || o.target; }
+    if (o.type === "time" && s.target) { o.target = int(s.target, 1, 100000, 0); o.unit = txt(s.unit || "reps", 12); o.totalReps = o.totalReps || o.target; }
     if (o.type === "amrap" && s.repsPerRound) o.repsPerRound = int(s.repsPerRound, 1, 10000, 0);
     if (o.type === "emom") {
       o.minutes = int(s.minutes, 1, 60, 10);
       o.measure = s.measure === "done" ? "done" : "reps";
       o.scored = s.scored === true || s.scored === "true";
-      o.moves = (Array.isArray(s.moves) && s.moves.length ? s.moves : [o.name]).slice(0, 12).map(m => String(m).slice(0, 40));
+      o.moves = (Array.isArray(s.moves) && s.moves.length ? s.moves : [o.name]).slice(0, 12).map(m => txt(m, 40));
     }
     return o;
   });
   if (!stations.length || new Set(stations.map(s => s.id)).size !== stations.length) return null;
   return {
     id: String(w.id || "custom").replace(/[^a-z0-9-]/gi, "").slice(0, 20) || "custom",
-    name: String(w.name || "Workout").slice(0, 40), place: String(w.place || "").slice(0, 40),
+    name: txt(w.name || "Workout", 40), place: txt(w.place || "", 40),
     teams: int(w.teams, 1, 12, 4), teamSize: int(w.teamSize, 1, 20, 3), rounds: int(w.rounds, 1, 10, 1), stations,
   };
 }
@@ -452,15 +475,19 @@ const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c
 
 // The shared clock for timed stations: the trainer starts it per round, every phone shows it.
 // Live it's stored as the server's start time, so phones with wrong clocks still agree.
+// A paused clock is stored as minus the milliseconds it shows (-390000 is paused at 6:30), so pausing
+// needs no extra field in the database. 0 or missing: not started.
 const now = () => Date.now() + (live ? serverOffset : 0);
 const clockStart = r => (live ? liveClocks : state.clocks)["r" + r] || 0;
+const paused = r => clockStart(r) < 0;
 const timed = () => W.stations.some(s => s.type !== "count");
 const clockEnd = () => Math.max(0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
-const elapsed = r => clockStart(r) ? Math.max(0, (now() - clockStart(r)) / 1000) : 0;
+const elapsed = r => { const v = clockStart(r); return v < 0 ? -v / 1000 : v ? Math.max(0, (now() - v) / 1000) : 0; };
 function clockText() {
   const end = clockEnd(), el = end ? Math.min(elapsed(state.round), end) : elapsed(state.round);
-  if (W.stations.every(s => s.type === "amrap") && end) return `${fmt(end - el)} left`;
-  return fmt(el) + (end ? ` / ${fmt(end)}` : "");
+  const p = paused(state.round) ? " · paused" : "";
+  if (W.stations.every(s => s.type === "amrap") && end) return `${fmt(end - el)} left${p}`;
+  return fmt(el) + (end ? ` / ${fmt(end)}` : "") + p;
 }
 const minuteNow = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60) + 1) : 0;
 const canRunClock = () => view === "local" || (view === "trainer" && eventId && eventId.startsWith(today()));
@@ -472,6 +499,26 @@ function startClock() {
 function resetClock() {
   if (live) return live.fb.set(path("clock", "r" + state.round), null);
   delete state.clocks["r" + state.round];
+}
+function writeClock(r, v) {
+  if (live) return live.fb.set(path("clock", "r" + r), v);
+  state.clocks["r" + r] = v;
+}
+// Pause keeps the time on screen (and stops EMOM minutes moving on); Resume carries on from there.
+const pauseClock = () => writeClock(state.round, -Math.max(1, Math.round(elapsed(state.round) * 1000)));
+const resumeClock = () => writeClock(state.round, now() + clockStart(state.round));
+// Set time: every phone jumps to that time. A running clock keeps running, otherwise it waits paused there.
+// EMOM ticks and misses for minutes the clock hasn't reached yet are cleared.
+function setClock(secs) {
+  const r = state.round, ms = Math.max(1, secs * 1000);
+  const upto = Math.floor(secs / 60), clear = {};
+  for (const s of W.stations) if (s.type === "emom") for (const t of state.teams) for (let m = upto + 1; m <= s.minutes; m++) {
+    const key = `${s.id}_m${m}`, x = val(t, r, key);
+    // The minute in progress keeps a miss a team already tapped; only a tick can't be right yet.
+    if (x && (m > upto + 1 || x === 1)) { clear[`counts/${t.id}/r${r}/${key}`] = null; delete t.counts[r][key]; pending.delete(`${t.id}/r${r}/${key}`); }
+  }
+  if (live && Object.keys(clear).length) live.fb.update(path(), clear);
+  writeClock(r, clockStart(r) > 0 ? now() - ms : -ms);
 }
 
 async function connect() {
@@ -534,14 +581,15 @@ function applyRemote(v) {
   if (screenMode) {
     view = "screen";
     // The screen shows the clock of the round that started last.
-    state.round = roundList().reduce((best, r) => clockStart(r) > clockStart(best) ? r : best, 0);
+    const began = r => clockStart(r) ? now() - elapsed(r) * 1000 : 0;
+    state.round = roundList().reduce((best, r) => began(r) > began(best) ? r : best, 0);
   }
   else if (role === "trainer") view = "trainer";
   else if (mine >= 0) { view = "team"; state.active = mine; }
   else view = "pick";
   state.active = Math.min(state.active, state.teams.length - 1);
   if (!editing) renderBoard();
-  renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
+  renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
   if (!(document.activeElement && document.activeElement.dataset.name !== undefined)) renderSetup();
   save();
 }
@@ -731,7 +779,7 @@ const stepBtns = (key, steps) => `
   <div class="minus-row"><button data-k="${key}" data-d="${-steps[0]}">Undo &minus;${steps[0]}</button></div>`;
 const top = (name, unit) => `<div class="st-top"><span class="st-name">${esc(name)}</span><span class="st-unit">${esc(unit)}</span></div>`;
 const info = s => s.info ? `<div class="st-info">${esc(s.info)}</div>` : "";
-const totalLine = (s, t) => W.rounds > 1 ? `<div class="st-other">Total over all rounds: ${score(s, t).text}</div>` : "";
+const totalLine = (s, t) => W.rounds > 1 ? `<div class="st-other">Total over all rounds: ${esc(score(s, t).text)}</div>` : "";
 
 const emomSel = {}, lastMinute = {};
 const STATION = {
@@ -739,13 +787,13 @@ const STATION = {
     <div class="st">${top(s.name, s.unit)}${info(s)}
       ${bigVal(s.id, val(t, r, s.id), `${s.name} ${s.unit}`)}
       ${stepBtns(s.id, s.steps)}
-      ${W.rounds > 1 ? `<div class="st-other">${roundList().filter(x => x !== r).map(x => `Runde ${x + 1}: ${val(t, x, s.id)}`).join(" · ")} · Total ${score(s, t).text}</div>` : ""}
+      ${W.rounds > 1 ? `<div class="st-other">${roundList().filter(x => x !== r).map(x => `Runde ${x + 1}: ${val(t, x, s.id)}`).join(" · ")} · Total ${esc(score(s, t).text)}</div>` : ""}
     </div>`,
   time: (s, t, r) => {
     const T = val(t, r, s.id + "_t"), capped = val(t, r, s.id + "_c"), running = clockStart(r);
     const label = `${s.name} time`;
     const body = capped ? `
-        <div class="st-info center">Time cap${s.cap ? " " + fmt(s.cap) : ""}. ${s.target ? `${s.unit} done of ${s.target}` : `Reps done${s.totalReps ? " of " + s.totalReps : ""}`}:</div>
+        <div class="st-info center">Time cap${s.cap ? " " + fmt(s.cap) : ""}. ${s.target ? `${esc(s.unit)} done of ${s.target}` : `Reps done${s.totalReps ? " of " + s.totalReps : ""}`}:</div>
         ${bigVal(s.id + "_r", val(t, r, s.id + "_r"), `${s.name} reps at the time cap`)}
         ${stepBtns(s.id + "_r", s.steps)}
         <div class="minus-row"><button data-act="clear:${s.id}">Clear result</button></div>`
@@ -783,26 +831,56 @@ const STATION = {
     const cells = [...Array(s.minutes)].map((_, k) => {
       const m = k + 1, x = val(t, r, `${s.id}_m${m}`);
       const cls = [m === now ? "now" : "", !done && m === sel ? "sel" : "", done && x === 1 ? "ok" : "", done && x === 2 ? "miss" : "", done && clockStart(r) && m > now ? "later" : ""].join(" ");
-      const shown = done ? (x === 1 ? "✓" : x === 2 ? "✗" : "·") : x;
+      const shown = done ? (x === 1 ? "✓" : x === 2 ? "✗" : "") : x;
       return `<button class="${cls}" data-min="${s.id}:${m}" aria-label="Minute ${m}, ${esc(move(m))}: ${done ? (x === 1 ? "done" : x === 2 ? "missed" : "not marked") : x + " reps"}"><b>${m}</b><span>${esc(move(m))}</span><i>${shown}</i></button>`;
     }).join("");
     const key = `${s.id}_m${sel}`;
     const panel = done
-      ? `<div class="st-info center">${clockStart(r) ? "Minutes tick themselves off as the clock passes them. Only tap a minute your team missed (tap again to undo)."
-        : "Minutes tick themselves off once the trainer starts the clock. Without the clock: tap once for done, again for missed, a third time to clear."}</div>`
+      ? `<div class="st-info center">${clockStart(r) ? "Passed minutes tick themselves off. Only tap a minute your team missed (tap again to undo)."
+        : live && eventId && !eventId.startsWith(today()) ? "Tap a minute once for done, again for missed, a third time to clear."
+        : view === "local" ? "Ticks start when you start the clock." : "Ticks start when the trainer starts the clock."}</div>`
       : `<div class="min-panel">${top(`Minute ${sel} · ${move(sel)}`, "reps")}${bigVal(key, val(t, r, key), `Minute ${sel} reps`)}${stepBtns(key, s.steps)}</div>`;
+    const today_ = !(live && eventId && !eventId.startsWith(today()));
     return `<div class="st wide">${top(s.name, `${s.minutes} min · ${done ? "minutes done" : "reps"}${s.scored ? "" : " · not ranked"}`)}${info(s)}
+      ${today_ ? nowNextBox(s) : ""}
       <div class="mins">${cells}</div>${panel}
-      <div class="st-other">${W.rounds > 1 ? "Total over all rounds" : "Total"}: ${score(s, t).text}</div></div>`;
+      <div class="st-other">${W.rounds > 1 ? "Total over all rounds" : "Total"}: ${esc(score(s, t).text)}</div></div>`;
   },
 };
 
+function commitClock() {
+  const secs = parseTime($("edit")?.value ?? "");
+  if (secs === null) { $("edit")?.focus(); return; }
+  editing = null; setClock(secs); save(); renderAll();
+}
+// Now / Next for an EMOM: this minute's move with the time left, and the next move (or the next part).
+function nowNext(s) {
+  const r = state.round, el = elapsed(r), started = clockStart(r);
+  const m = started ? Math.min(s.minutes, Math.floor(el / 60) + 1) : 1, move = k => s.moves[(k - 1) % s.moves.length];
+  if (started && el >= s.minutes * 60) {
+    const part = W.stations[W.stations.indexOf(s) + 1];
+    return { now: `${s.name} done`, left: "", next: part ? part.name : "" };
+  }
+  const part = W.stations[W.stations.indexOf(s) + 1];
+  return {
+    now: `Minute ${m} · ${move(m)}`,
+    left: !started ? "waiting for the clock" : paused(r) ? "paused" : `${fmt(Math.ceil(m * 60 - el))} left`,
+    next: m < s.minutes ? move(m + 1) : part ? part.name : "done",
+  };
+}
+const nowNextHtml = s => { const n = nowNext(s); return `<div class="nn-row"><span class="nn-l">Now</span><b>${esc(n.now)}</b>${n.left ? `<span class="nn-t">${esc(n.left)}</span>` : ""}</div>${n.next ? `<div class="nn-row next"><span class="nn-l">Next</span><span>${esc(n.next)}</span></div>` : ""}`; };
+const nowNextBox = s => `<div class="nownext" data-nn="${s.id}">${nowNextHtml(s)}</div>`;
+
 function clockBar() {
   if (!timed() || (live && eventId && !eventId.startsWith(today()))) return "";
-  const running = clockStart(state.round);
-  const ctl = !canRunClock() ? (running ? "" : `<span class="note">The trainer starts the clock</span>`)
-    : running ? `<span id="clockArea"><button class="ghost" id="clockReset">Reset clock</button></span>`
-    : `<button class="solid" id="clockStart">Start clock</button>`;
+  const r = state.round, started = clockStart(r);
+  if (editing === "__clock") return `<div class="clockbar"><span class="note">Set the clock to</span>
+    <input class="st-input clock-in" id="edit" type="text" inputmode="decimal" placeholder="m:ss" value="${fmt(elapsed(r))}" aria-label="Clock time, minutes and seconds">
+    <span class="actions"><button class="solid" id="clockSetOk">Set</button><button class="ghost" id="clockNo">Cancel</button></span></div>`;
+  const ctl = !canRunClock() ? (started ? "" : `<span class="note">The trainer starts the clock</span>`)
+    : `<span class="actions" id="clockArea">${!started ? `<button class="solid" id="clockStart">Start clock</button>`
+      : paused(r) ? `<button class="solid" id="clockResume">Resume</button>` : `<button class="ghost" id="clockPause">Pause</button>`}
+      <button class="ghost" id="clockSet">Set time</button>${started ? `<button class="ghost" id="clockReset">Reset</button>` : ""}</span>`;
   return `<div class="clockbar"><span class="clock-val" data-clock>${clockText()}</span>${ctl}</div>`;
 }
 
@@ -819,6 +897,8 @@ function renderBoard() {
     const inp = $("edit");
     if (!inp) { editing = null; return; }
     inp.focus(); inp.select();
+    // Setting the clock only happens with Set or Enter, so tapping Cancel never sets it by accident.
+    if (editing === "__clock") { inp.addEventListener("keydown", e => { if (e.key === "Enter") commitClock(); }); return; }
     const commit = () => {
       const key = editing;
       if (key.endsWith("_t") && stationOf(key)?.type === "time") {
@@ -832,20 +912,32 @@ function renderBoard() {
   }
 }
 
-// EMOM minutes the clock has fully passed. The team's own phone (or a phone on its own) saves those still
-// unmarked as done, so a team only taps the minutes it missed. The trainer's phone leaves them alone,
-// so it never overwrites a miss a team just tapped.
+// EMOM minutes the clock has fully passed count as done, so a team only taps the minutes it missed.
+// A team's own phone saves the ticks for its team, the trainer's phone for every team (so it works with
+// no team phone open), a phone on its own for all its teams. Live, each tick is written only if the
+// minute is still empty on the server, so it never overwrites a miss a team just tapped.
 const minutesPassed = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60)) : 0;
 const filled = {};
 function fillPassed() {
-  if (!(view === "team" || view === "local") || (live && eventId && !eventId.startsWith(today()))) return;
-  const t = state.teams[state.active]; if (!t) return;
+  if (live && eventId && !eventId.startsWith(today())) return;
+  const who = view === "trainer" || view === "local" ? state.teams : view === "team" ? [state.teams[state.active]] : [];
+  const r = state.round;
   for (const s of W.stations) if (s.type === "emom" && s.measure === "done") {
-    const p = minutesPassed(s), k = [eventId, t.id, state.round, clockStart(state.round), s.id].join("|");
-    if (!p || filled[k] >= p) continue;
-    filled[k] = p;
-    for (let m = 1; m <= p; m++) if (!val(t, state.round, `${s.id}_m${m}`)) setValue(state.active, `${s.id}_m${m}`, 1);
-    save();
+    const p = minutesPassed(s);
+    if (!p) continue;
+    for (const t of who) {
+      if (!t) continue;
+      const k = [eventId, t.id, r, clockStart(r), s.id].join("|");
+      if (filled[k] >= p) continue;
+      filled[k] = p;
+      for (let m = 1; m <= p; m++) {
+        const key = `${s.id}_m${m}`;
+        if (val(t, r, key)) continue;
+        if (live) live.fb.runTransaction(path("counts", t.id, "r" + r, key), cur => cur ? undefined : 1).catch(() => { delete filled[k]; });
+        else t.counts[r][key] = 1;
+      }
+      if (!live) { save(); renderStandings(); if (!editing) renderBoard(); }
+    }
   }
 }
 
@@ -853,6 +945,7 @@ function fillPassed() {
 setInterval(() => {
   if (!timed()) return;
   document.querySelectorAll("[data-clock]").forEach(el => el.textContent = clockText());
+  document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
   for (const s of W.stations) if (s.type === "emom") {
@@ -1023,6 +1116,7 @@ function renderScreen() {
   el.innerHTML = `
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
       ${timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
+    ${W.stations.filter(s => s.type === "emom").map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
     <div class="scr-main">
       <div class="tbl-wrap"><table class="scr-tbl">
         <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
@@ -1383,6 +1477,54 @@ function renderLive() {
   renderLinks();
 }
 
+// ---- How it works ----
+// The same text is in GUIDE.md in the repo. "team" sections are what a team phone shows; the trainer sees all.
+// **bold** is the only markup.
+const GUIDE = [
+  { h: "Joining", team: true, p: [
+    "Scan the QR code the trainer shows (or open the link) and pick your team. Your phone remembers it every week.",
+    "Picked the wrong team? Tap **Switch team** at the top." ] },
+  { h: "Counting", team: true, p: [
+    "**Max** stations (cals, reps, meters, lanes): tap the **+** buttons as you go. One phone per team is easiest.",
+    "**For time**: tap **Finished** when your team is done; the time comes from the shared clock. Not done at the time cap? Tap **Time cap** and count the reps you did.",
+    "**Team goal** (\"120 team reps\", \"2000 m\"): count towards the goal; the time is taken by itself when you reach it.",
+    "**AMRAP**: tap **+1 round** and count reps. If a round has a fixed number of reps, just count reps: full rounds roll over by themselves.",
+    "**EMOM**: a grid of minutes. Once the clock runs, passed minutes tick themselves off. Only tap a minute your team missed (tap again to undo). **Now / Next** shows this minute's exercise, the time left and what comes next." ] },
+  { h: "Fixing a mistake", team: true, p: [
+    "Tap **Undo** under the buttons, or tap the big number and type the right one. On timed stations, **Clear result** starts over." ] },
+  { h: "Who wins", team: true, p: [
+    "Each station ranks the teams (1 is best, ties share a place). The ranks add up to points, and the **lowest points win**. With several rounds, each station counts all rounds together.",
+    "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so.",
+    "**Team best** under a station is your best from earlier sessions of the same workout. Beat it for a **PB**; beat every team for a **Record**." ] },
+  { h: "Starting a session", p: [
+    "On the trainer phone, pick today's workout and tap **Start today's session**. Each day gets its own session; teams and their names carry over from last time.",
+    "Tap **Show QR codes**: the Everyone code lets each phone pick its team, a team's code sets the team directly. Teams that can't scan: send a link from **Trainer tools > Links**.",
+    "**Open big screen** on a TV or laptop for live standings, the clock, Now / Next and a QR code to join. It has no buttons, so it can't be changed by accident." ] },
+  { h: "The clock", p: [
+    "Timed workouts (for time, AMRAP, EMOM) have a shared clock. **Start clock** on the trainer phone; every phone and the big screen follow it.",
+    "**Pause** stops the clock and the EMOM minutes (for a break); **Resume** carries on. **Set time** jumps to an exact time like 6:30, for example after a false start; EMOM ticks for minutes not reached yet are cleared. **Reset** starts over (it asks first).",
+    "With several rounds, each round has its own clock: pick the round at the top first." ] },
+  { h: "Fixing scores as the trainer", p: [
+    "Pick a team with the tabs above the stations to see and change its numbers, the same way a team does." ] },
+  { h: "Workouts", p: [
+    "**Trainer tools > Workouts > Copy instructions for a chatbot**, paste them into ChatGPT, Claude or similar and add the workout card (a photo or the text). Paste the answer, tap **Check**, then **Save**, then **Use**.",
+    "Switching a session to another workout clears its scores (it asks first). **Copy** puts a workout on the clipboard so a chatbot can change it; pasting it back with the same id replaces it. Every session keeps its own copy of its workout." ] },
+  { h: "Sessions and history", p: [
+    "**Trainer tools > Sessions**: switch everyone to another of today's sessions, open a past one, or add a past date to type in results from paper. **Delete this session** is there too. A second class on the same day: **Trainer tools > Links > Start extra session**.",
+    "**Trainer tools > History**: records and team bests for the workout on screen, and past winners. Bests only compare sessions of the same workout." ] },
+  { h: "Teams", p: [
+    "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests." ] },
+];
+function renderHelp() {
+  const el = $("help");
+  el.hidden = screenMode || !["local", "trainer", "team", "pick"].includes(view);
+  if (el.hidden) return;
+  const all = view === "local" || view === "trainer";
+  const html = GUIDE.filter(g => all || g.team).map(g => `<h3>${esc(g.h)}</h3><ul>${g.p.map(x =>
+    `<li>${esc(x).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</li>`).join("")}</ul>`).join("");
+  if ($("helpCard").dataset.who !== String(all)) { $("helpCard").innerHTML = `<h2>How it works</h2>${html}`; $("helpCard").dataset.who = String(all); }
+}
+
 // Trainer tools: links for anyone who can't scan the QR code, an extra session, and switching role.
 function renderLinks() {
   const el = $("linksCard");
@@ -1443,7 +1585,7 @@ function renderSections() {
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
 
-function renderAll() { renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); }
+function renderAll() { renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); }
 
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
@@ -1487,7 +1629,11 @@ document.addEventListener("click", e => {
     return;
   }
   else if (b.id === "clockYes") resetClock();
-  else if (b.id === "clockNo") { renderBoard(); return; }
+  else if (b.id === "clockNo") { if (editing === "__clock") editing = null; renderBoard(); return; }
+  else if (b.id === "clockPause") pauseClock();
+  else if (b.id === "clockResume") resumeClock();
+  else if (b.id === "clockSet") { editing = "__clock"; renderBoard(); return; }
+  else if (b.id === "clockSetOk") return commitClock();
   else if (b.dataset.wuse) {
     const w = byId(b.dataset.wuse); if (!w) return;
     wMsg = "";
