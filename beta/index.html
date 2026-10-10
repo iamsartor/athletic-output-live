@@ -65,6 +65,8 @@ h2 { font-family: var(--display); font-weight: 800; font-size: 1.3rem; text-tran
 .st-val { font-family: var(--display); font-weight: 800; font-size: 3.2rem; line-height: .95; font-variant-numeric: tabular-nums; text-align: center; width: 100%; padding: 2px 0; border-radius: 8px; }
 .st-val:active { background: var(--press); }
 .st-input { font-family: var(--display); font-weight: 800; font-size: 2.6rem; text-align: center; width: 100%; border: 2px solid var(--accent); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 2px 0; }
+/* Side-by-side tiles: the number and buttons sit at the same height even when a name or info line wraps. */
+.st:not(.wide) > .st-val, .st:not(.wide) > .st-input { margin-top: auto; }
 .st-other { text-align: center; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .btns button { padding: 12px 0; border-radius: 10px; background: var(--press); font-family: var(--display); font-weight: 800; font-size: 1.25rem; font-variant-numeric: tabular-nums; }
@@ -139,6 +141,20 @@ h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; co
 .nn-row.next { color: var(--muted); font-size: .9rem; }
 .nn-l { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); width: 3.2em; flex: none; }
 .nn-t { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st.cur { border: 2px solid var(--tc); padding: 9px; }
+.nownext.rot { border-left: 4px solid var(--tc, var(--accent)); }
+.nownext.flash { animation: flash 1.2s ease-out 2; }
+@keyframes flash { 0% { background: var(--tc, var(--accent)); color: var(--accent-fg); } 100% { background: var(--press); } }
+@media (prefers-reduced-motion: reduce) { .nownext.flash { animation: none; outline: 3px solid var(--tc, var(--accent)); } }
+.rot-board { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.rot-head { font-family: var(--display); font-weight: 800; font-size: clamp(1.4rem, 3vw, 3rem); }
+.rot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.rot-cell { background: var(--surface); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-height: 80px; opacity: .6; }
+.rot-cell.busy { opacity: 1; }
+.rot-cell.moving { outline: 3px solid var(--accent); }
+.rot-cell b { font-size: clamp(.9rem, 1.4vw, 1.3rem); }
+.rot-cell .tname { font-size: clamp(.9rem, 1.4vw, 1.4rem); }
+.rot-cell i { font-style: normal; font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
 .nownext.big { padding: 14px 20px; gap: 8px; margin-bottom: 18px; }
 .nownext.big .nn-row b { font-size: clamp(1.6rem, 4vw, 4rem); }
 .nownext.big .nn-t { font-size: clamp(1.6rem, 4vw, 4rem); }
@@ -238,6 +254,8 @@ body.screen header { display: none; }
   <details class="tools" id="tools" hidden>
     <summary id="toolsLabel">Trainer tools</summary>
     <div class="tools-body">
+      <section class="card" id="startsCard" hidden></section>
+
       <section class="card" id="linksCard" hidden></section>
 
       <section class="card" id="sessionsCard" hidden></section>
@@ -286,6 +304,10 @@ body.screen header { display: none; }
 //            measure "done" (a grid of minutes: they tick themselves off as the clock passes them, a team
 //            only taps a missed one) or "reps" (count reps each minute). An EMOM is a team's own progress
 //            grid and isn't ranked, unless the station has scored: true
+// Rotation (race simulations): slot on the workout ("3:30") makes everyone move one station along the list
+// at the same time, every slot. Each team (an athlete or a pair) starts at a different station, spread out
+// by itself, and does the whole list. time on a station ("3:00") is its work time; the rest of the slot is
+// for moving on. Rotation workouts aren't ranked unless ranked: true.
 // Scoring: each station (except unscored EMOMs) ranks the teams; points add up the ranks over all stations and the lowest wins.
 // Mixing types in one workout works the same way (for example an EMOM part and a for-time part).
 
@@ -342,6 +364,7 @@ function normWorkout(w) {
     // A team goal ("120 team reps", "2000 m"): teams count towards it and the time is taken when they reach it.
     if (o.type === "time" && s.target) { o.target = int(s.target, 1, 100000, 0); o.unit = txt(s.unit || "reps", 12); o.totalReps = o.totalReps || o.target; }
     if (o.type === "amrap" && s.repsPerRound) o.repsPerRound = int(s.repsPerRound, 1, 10000, 0);
+    if (w.slot !== undefined && s.time !== undefined) o.time = int(parseCap(s.time), 10, 3600, 0) || undefined;
     if (o.type === "emom") {
       o.minutes = int(s.minutes, 1, 60, 10);
       o.measure = s.measure === "done" ? "done" : "reps";
@@ -354,7 +377,8 @@ function normWorkout(w) {
   return {
     id: String(w.id || "custom").replace(/[^a-z0-9-]/gi, "").slice(0, 20) || "custom",
     name: txt(w.name || "Workout", 40), place: txt(w.place || "", 40),
-    teams: int(w.teams, 1, 12, 4), teamSize: int(w.teamSize, 1, 20, 3), rounds: int(w.rounds, 1, 10, 1), stations,
+    teams: int(w.teams, 1, 20, 4), teamSize: int(w.teamSize, 1, 20, 3), rounds: w.slot ? 1 : int(w.rounds, 1, 10, 1), stations,
+    ...(w.slot !== undefined && int(parseCap(w.slot), 30, 3600, 0) ? { slot: int(parseCap(w.slot), 30, 3600, 0), ranked: w.ranked === true } : {}),
   };
 }
 const parseWorkout = s => { try { return normWorkout(JSON.parse(s)); } catch { return null; } };
@@ -469,7 +493,7 @@ function score(s, t, w = W) {
   return { key: s.totalReps ? [missing, secs, -progress] : [missing, capped, secs, -reps], text };
 }
 // Stations that count for the ranking. An EMOM is a progress grid for each team unless it's marked scored.
-const ranked = s => s.type !== "emom" || s.scored;
+const ranked = (s, w = W) => (s.type !== "emom" || s.scored) && !(w.slot && !w.ranked);
 const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0) ? -1 : 1; return 0; };
 const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c).some(x => x)));
 
@@ -480,8 +504,8 @@ const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c
 const now = () => Date.now() + (live ? serverOffset : 0);
 const clockStart = r => (live ? liveClocks : state.clocks)["r" + r] || 0;
 const paused = r => clockStart(r) < 0;
-const timed = () => W.stations.some(s => s.type !== "count");
-const clockEnd = () => Math.max(0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
+const timed = () => !!W.slot || W.stations.some(s => s.type !== "count");
+const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
 const elapsed = r => { const v = clockStart(r); return v < 0 ? -v / 1000 : v ? Math.max(0, (now() - v) / 1000) : 0; };
 function clockText() {
   const end = clockEnd(), el = end ? Math.min(elapsed(state.round), end) : elapsed(state.round);
@@ -571,7 +595,7 @@ function applyRemote(v) {
   setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
   liveClocks = v.clock || {};
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
-  state.teams = ids.map(id => ({ id, name: v.teams[id].name, counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
+  state.teams = ids.map(id => ({ id, name: v.teams[id].name, order: v.teams[id].order, counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
   // Taps not yet sent win over what the server has, so the counter never jumps back.
   for (const [k, x] of pending) {
     const [id, r, key] = k.split("/"), t = state.teams.find(t => t.id === id);
@@ -589,7 +613,7 @@ function applyRemote(v) {
   else view = "pick";
   state.active = Math.min(state.active, state.teams.length - 1);
   if (!editing) renderBoard();
-  renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
+  renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
   if (!(document.activeElement && document.activeElement.dataset.name !== undefined)) renderSetup();
   save();
 }
@@ -853,6 +877,74 @@ function commitClock() {
   if (secs === null) { $("edit")?.focus(); return; }
   editing = null; setClock(secs); save(); renderAll();
 }
+// ---- Rotation ----
+// Start stations spread over the list in a fixed order that doesn't depend on how many teams there are,
+// so adding a team never moves anyone else. Stations go in pairs (a run and the station after it), so
+// half the teams start on each.
+function spreadOrder(N) {
+  const P = Math.ceil(N / 2), pick = [0], dist = (a, b) => Math.min(Math.abs(a - b), P - Math.abs(a - b));
+  while (pick.length < P) {
+    let best = -1, bd = -1;
+    for (let k = 0; k < P; k++) if (!pick.includes(k)) { const d = Math.min(...pick.map(q => dist(k, q))); if (d > bd) { bd = d; best = k; } }
+    pick.push(best);
+  }
+  return pick.flatMap(k => [2 * k, 2 * k + 1]).filter(p => p < N);
+}
+const startOf = i => { const o = spreadOrder(W.stations.length); return o[i % o.length]; };
+// Where team i is now: the slot number, the station, the phase ("wait", "work", "move", "done") and time left.
+function rotAt(i) {
+  const N = W.stations.length, r = state.round, started = clockStart(r), el = elapsed(r);
+  const k = started ? Math.min(N - 1, Math.floor(el / W.slot)) : 0, p = (startOf(i) + k) % N, s = W.stations[p];
+  const t = el - k * W.slot, work = Math.min(W.slot, s.time || W.slot);
+  const next = k < N - 1 ? W.stations[(p + 1) % N].name : "Finish";
+  if (!started) return { k, p, s, phase: "wait", left: 0, next };
+  if (el >= W.slot * N) return { k: N, p, s, phase: "done", left: 0, next: "" };
+  return t < work ? { k, p, s, phase: "work", left: work - t, next } : { k, p, s, phase: "move", left: W.slot - t, next };
+}
+function rotHtml(i) {
+  const a = rotAt(i), pz = paused(state.round) ? " · paused" : "";
+  if (a.phase === "done") return `<div class="nn-row"><span class="nn-l">Done</span><b>All ${W.stations.length} stations finished</b></div>`;
+  if (a.phase === "move") return `<div class="nn-row"><span class="nn-l">Move</span><b>Go to ${esc(a.next)}</b><span class="nn-t">${fmt(Math.ceil(a.left))}${pz}</span></div>`;
+  return `<div class="nn-row"><span class="nn-l">${a.phase === "wait" ? "Start" : "Now"}</span><b>${esc(a.s.name)}</b><span class="nn-t">${a.phase === "wait" ? "waiting for the clock" : fmt(Math.ceil(a.left)) + " left" + pz}</span></div>
+    <div class="nn-row next"><span class="nn-l">Next</span><span>${esc(a.next)}</span></div>`;
+}
+const rotBox = i => `<div class="nownext rot" data-rot="${i}">${rotHtml(i)}</div>`;
+// Swapping two teams' start stations swaps their places in the team order, so no extra data is stored.
+let swapPick = null;
+function swapStarts(a, b) {
+  const A = state.teams[a], B = state.teams[b]; if (!A || !B) return;
+  let oa = A.order ?? a, ob = B.order ?? b;
+  if (oa === ob) { oa = a; ob = b; }
+  if (live) return live.fb.update(path(), { [`teams/${A.id}/order`]: ob, [`teams/${B.id}/order`]: oa });
+  state.teams[a] = B; state.teams[b] = A;
+  if (state.active === a) state.active = b; else if (state.active === b) state.active = a;
+}
+function renderStarts() {
+  const el = $("startsCard");
+  el.hidden = screenMode || !W.slot || !(view === "trainer" || view === "local");
+  if (el.hidden) return;
+  const k = rotAt(0).k, now = clockStart(state.round) && k < W.stations.length;
+  el.innerHTML = `<h2>Start stations</h2>
+    <p class="note">Everyone moves one station on every ${fmt(W.slot)}, in the order of the workout. Starts are spread out by themselves; to change one, tap Swap on two people.</p>
+    ${state.teams.map((t, i) => `<div class="link-row" style="${tc(i)}"><span class="dot"></span><span class="n">${esc(t.name)}</span>
+      <span class="note">${esc(W.stations[startOf(i)].name)}${now ? ` · now ${esc(rotAt(i).s.name)}` : ""}</span>
+      <button class="ghost" data-swap="${i}" aria-pressed="${swapPick === i}">${swapPick === null ? "Swap" : swapPick === i ? "Cancel" : "Swap here"}</button></div>`).join("")}
+    ${state.teams.length > W.stations.length ? `<p class="note">More people than stations: some share a start.</p>` : ""}`;
+}
+// Team phones buzz when it's time to move on and when the next station starts.
+let lastRot = "";
+function rotCue() {
+  if (!W.slot || screenMode || !state.teams[state.active]) return;
+  const a = rotAt(state.active), key = [state.active, a.k, a.phase].join("|"), was = lastRot;
+  lastRot = key;
+  if (!was || key === was || was.split("|")[0] !== String(state.active)) return;
+  // A new station: the tiles move round so the current one comes first.
+  if (was.split("|")[1] !== String(a.k) && !editing) renderBoard();
+  if (!clockStart(state.round) || paused(state.round) || !(view === "team" || view === "local")) return;
+  try { navigator.vibrate && navigator.vibrate(a.phase === "move" ? [300, 150, 300] : [600]); } catch {}
+  document.querySelectorAll("[data-rot]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
+}
+
 // Now / Next for an EMOM: this minute's move with the time left, and the next move (or the next part).
 function nowNext(s) {
   const r = state.round, el = elapsed(r), started = clockStart(r);
@@ -884,6 +976,8 @@ function clockBar() {
   return `<div class="clockbar"><span class="clock-val" data-clock>${clockText()}</span>${ctl}</div>`;
 }
 
+// In a rotation each team sees its own path, starting with the station it's on.
+const boardOrder = i => { if (!W.slot) return W.stations; const N = W.stations.length, p = rotAt(i).p; return [...Array(N)].map((_, k) => W.stations[(p + k) % N]); };
 function renderBoard() {
   const i = state.active, t = state.teams[i], r = state.round;
   const board = $("board");
@@ -892,7 +986,9 @@ function renderBoard() {
   board.innerHTML = `
     <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">${W.rounds > 1 ? "Runde " + (r + 1) : ""}</span></div>
     ${clockBar()}
-    <div class="grid">${W.stations.map(s => STATION[s.type](s, t, r).replace(/<\/div>\s*$/, pbLine(s, t) + "</div>")).join("")}</div>`;
+    ${W.slot ? rotBox(i) : ""}
+    <div class="grid">${boardOrder(i).map(s => { const h = STATION[s.type](s, t, r).replace(/<\/div>\s*$/, pbLine(s, t) + "</div>");
+      return W.slot && s === rotAt(i).s && rotAt(i).phase !== "done" ? h.replace('<div class="st', '<div class="st cur') : h; }).join("")}</div>`;
   if (editing) {
     const inp = $("edit");
     if (!inp) { editing = null; return; }
@@ -945,6 +1041,9 @@ function fillPassed() {
 setInterval(() => {
   if (!timed()) return;
   document.querySelectorAll("[data-clock]").forEach(el => el.textContent = clockText());
+  document.querySelectorAll("[data-rot]").forEach(el => { const h = rotHtml(+el.dataset.rot); if (el.innerHTML !== h) el.innerHTML = h; });
+  if (screenMode && W.slot) document.querySelectorAll("[data-rotboard]").forEach(el => { const h = rotBoardHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
+  rotCue();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
@@ -968,7 +1067,7 @@ function ranksOf(s, teams, w = W) {
   return keys.map(k => 1 + keys.filter(o => cmp(o, k) < 0).length);
 }
 function table(w, teams) {
-  const rs = w.stations.filter(ranked), rk = Object.fromEntries(rs.map(s => [s.id, ranksOf(s, teams, w)]));
+  const rs = w.stations.filter(s => ranked(s, w)), rk = Object.fromEntries(rs.map(s => [s.id, ranksOf(s, teams, w)]));
   const rows = teams.map((t, i) => ({ t, i, pts: rs.reduce((a, s) => a + rk[s.id][i], 0) })).sort((a, b) => a.pts - b.pts);
   rows.forEach(r => r.place = 1 + rows.filter(o => o.pts < r.pts).length);
   return { rk, rows, n: rs.length };
@@ -1101,6 +1200,17 @@ function gridBar(s, t) {
   const cells = roundList().flatMap(r => [...Array(s.minutes)].map((_, k) => val(t, r, `${s.id}_m${k + 1}`)));
   return `<span class="gbar">${cells.map(x => `<i class="${x === 1 ? "ok" : x === 2 ? "miss" : ""}"></i>`).join("")}</span>`;
 }
+// Big screen for a rotation: every station with who's on it now, and the time to the next switch.
+function rotBoardHtml() {
+  const at = state.teams.map((t, i) => [t, i, rotAt(i)]), a0 = at[0]?.[2];
+  const head = !a0 ? "" : a0.phase === "wait" ? "Waiting for the clock" : a0.phase === "done" ? "Finished" :
+    `Next switch in ${fmt(Math.ceil(W.slot - (elapsed(state.round) - a0.k * W.slot)))} · station ${a0.k + 1} of ${W.stations.length}${paused(state.round) ? " · paused" : ""}`;
+  return `<div class="rot-head">${esc(head)}</div><div class="rot-grid">${W.stations.map((s, p) => {
+    const here = at.filter(([, , a]) => a.p === p && a.phase !== "done");
+    const moving = here.some(([, , a]) => a.phase === "move");
+    return `<div class="rot-cell${here.length ? " busy" : ""}${moving ? " moving" : ""}"><b>${esc(s.name)}</b>${here.map(([t, i]) =>
+      `<span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>`).join("")}${moving ? `<i>move on</i>` : ""}</div>`; }).join("")}</div>`;
+}
 function renderScreen() {
   const el = $("screen");
   document.body.classList.toggle("screen", screenMode);
@@ -1117,6 +1227,8 @@ function renderScreen() {
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
       ${timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
     ${W.stations.filter(s => s.type === "emom").map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
+    ${W.slot ? `<div class="scr-main"><div class="rot-board" data-rotboard>${rotBoardHtml()}</div>
+      ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
     <div class="scr-main">
       <div class="tbl-wrap"><table class="scr-tbl">
         <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
@@ -1127,7 +1239,7 @@ function renderScreen() {
             ${n > 1 ? `<td class="pts">${pts}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
       ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
-    </div>`;
+    </div>`}`;
   if (view === "screen") drawQR($("scrQr"), baseUrl());
 }
 
@@ -1235,7 +1347,7 @@ const describe = s => s.type === "count" ? `max ${s.unit}`
   : s.type === "time" ? (s.target ? `${s.target} ${s.unit} for time` : "for time") + (s.cap ? `, cap ${fmt(s.cap)}` : "")
   : s.type === "amrap" ? "rounds + reps" + (s.cap ? `, ${fmt(s.cap)}` : "")
   : `EMOM ${s.minutes} min, ${s.measure === "done" ? "done or missed" : "reps"}${s.scored ? ", ranked" : ", progress only (not ranked)"}`;
-const summary = w => (w.rounds > 1 ? `${w.rounds} rounds: ` : "") + w.stations.map(s => `${s.name} (${describe(s)})`).join(", ");
+const summary = w => (w.slot ? `Rotation, move on every ${fmt(w.slot)}: ` : w.rounds > 1 ? `${w.rounds} rounds: ` : "") + w.stations.map(s => `${s.name} (${describe(s)})`).join(", ");
 let wConfirm = null, pasteText = "", pasteCheck = null, wMsg = "", startPick = DEFAULT.id;
 
 const LLM_PROMPT = `You convert a group workout into a JSON file for our team scoring app.
@@ -1286,6 +1398,9 @@ TYPES
 - "amrap": as many rounds and reps as possible. Add "cap" as "mm:ss" (the AMRAP length) and "repsPerRound" if one round has a fixed number of reps.
 - "emom": every minute on the minute. Add "minutes" = the total number of minutes (e.g. 4 moves for 4 rounds = 16), "moves" = the list of what happens in minute 1, 2, 3 ... (it repeats; include "Rest" if a minute is rest), and "measure": "done" (usual: a grid where minutes tick themselves off on the shared clock and a team only taps the ones it missed) or "reps" (only if the card asks for max reps each minute). An EMOM is each team's own progress and isn't ranked. Add "scored": true only if the card says the EMOM result counts towards the winner.
 
+ROTATION (race simulations)
+If athletes go through the stations in race order and everyone moves on at the same time (for example half on the treadmills and half on stations, switching every 3:30), add "slot": "3:30" to the workout: the time between switches. Give each station whose work is shorter a "time", e.g. "3:00"; the rest of the slot is for moving on. List the stations in race order, including each run. Each athlete or pair is one entry ("teams" = how many, up to 20, "teamSize" 1 or 2); the app spreads their starting stations by itself. Use "count" stations. Rotation workouts aren't ranked; add "ranked": true only if the card wants a winner.
+
 EXAMPLE 1 (max effort stations, done twice)
 {"id":"team-output-b","name":"Team Output B","place":"Thursday Athletic","teams":4,"teamSize":3,"rounds":2,"stations":[
  {"id":"erg","name":"Erg","type":"count","unit":"cals","steps":[1,5,10],"info":"90s/person · Ski, Row, Bike"},
@@ -1334,6 +1449,11 @@ function checkWorkout(text) {
   if (o.id !== undefined && id !== o.id) fixed.push(`id "${o.id}" became "${id}"`);
   o.id = id;
   if (isBuiltIn(o.id)) { o.id = o.id.slice(0, 15) + "-copy"; fixed.push(`id became "${o.id}" because a built-in workout uses the other one`); }
+  if (o.slot !== undefined) {
+    const c = parseCap(o.slot);
+    if (c === null || !(c >= 30 && c <= 3600)) errors.push('slot must be a time like "3:30" (30 seconds to 60 minutes).');
+    else if (typeof o.slot !== "string" || !/^\d+:\d\d$/.test(o.slot.trim())) fixed.push(`slot ${JSON.stringify(o.slot)} read as ${fmt(c)}`);
+  }
   if (o.rounds !== undefined && !(Number.isInteger(+o.rounds) && o.rounds >= 1 && o.rounds <= 10)) errors.push("rounds must be a whole number from 1 to 10.");
   if (!Array.isArray(o.stations) || !o.stations.length) errors.push("The workout needs at least one station.");
   else {
@@ -1352,6 +1472,12 @@ function checkWorkout(text) {
         const c = parseCap(s.cap);
         if (c === null || !(c >= 0)) errors.push(`${n}: the cap must be a time like "20:00".`);
         else if (typeof s.cap !== "string" || !/^\d+:\d\d$/.test(s.cap.trim())) fixed.push(`${n}: cap ${JSON.stringify(s.cap)} read as ${fmt(c)}`);
+      }
+      if (s.time !== undefined) {
+        const c = parseCap(s.time);
+        if (o.slot === undefined) warnings.push(`${n} has a time but the workout has no "slot", so it's ignored.`);
+        else if (c === null || !(c >= 10)) errors.push(`${n}: time must be like "3:00".`);
+        else if (parseCap(o.slot) && c > parseCap(o.slot)) errors.push(`${n}: its time (${fmt(c)}) is longer than the slot (${fmt(parseCap(o.slot))}).`);
       }
       if (s.type === "amrap" && !s.cap) warnings.push(`${n} has no length. Add a cap like "20:00" so the clock counts down.`);
     });
@@ -1421,8 +1547,8 @@ function renderWorkout(force) {
     <div class="actions"><button class="ghost" id="wCheck">Check</button>
       ${pc && pc.w ? `<button class="solid" id="wSave">${saved[pc.w.id] ? "Replace" : "Save"} ${esc(pc.w.name)}</button>` : ""}</div>
     ${pc ? pc.errors.length ? pc.errors.map(e => `<p class="err">${esc(e)}</p>`).join("")
-      : `<p class="note"><b>${esc(pc.w.name)}</b>, ${pc.w.teams} teams of ${pc.w.teamSize}${pc.w.rounds > 1 ? `, ${pc.w.rounds} rounds (every station repeats)` : ""}. Check the stations before you save:</p>
-        <ul class="note">${pc.w.stations.map(s => `<li><b>${esc(s.name)}</b>: ${esc(describe(s))}${s.type === "count" ? ", + buttons " + s.steps.join("/") : ""}${s.type === "emom" ? ": " + esc(s.moves.join(", ")) : ""}${s.info ? ` · ${esc(s.info)}` : ""}</li>`).join("")}</ul>
+      : `<p class="note"><b>${esc(pc.w.name)}</b>, ${pc.w.teams} teams of ${pc.w.teamSize}${pc.w.rounds > 1 ? `, ${pc.w.rounds} rounds (every station repeats)` : ""}${pc.w.slot ? `, everyone moves on every ${fmt(pc.w.slot)}${pc.w.ranked ? "" : ", not ranked"}` : ""}. Check the stations before you save:</p>
+        <ul class="note">${pc.w.stations.map(s => `<li><b>${esc(s.name)}</b>: ${esc(describe(s))}${s.time ? `, ${fmt(s.time)} work` : ""}${s.type === "count" ? ", + buttons " + s.steps.join("/") : ""}${s.type === "emom" ? ": " + esc(s.moves.join(", ")) : ""}${s.info ? ` · ${esc(s.info)}` : ""}</li>`).join("")}</ul>
         ${pc.warnings.map(x => `<p class="err">Please check: ${esc(x)}</p>`).join("")}
         ${pc.fixed.length ? `<p class="note">Fixed automatically: ${esc(pc.fixed.join("; "))}.</p>` : ""}` : ""}
     ${wMsg ? `<p class="note">${esc(wMsg)}</p>` : ""}`;
@@ -1512,6 +1638,10 @@ const GUIDE = [
   { h: "Sessions and history", p: [
     "**Trainer tools > Sessions**: switch everyone to another of today's sessions, open a past one, or add a past date to type in results from paper. **Delete this session** is there too. A second class on the same day: **Trainer tools > Links > Start extra session**.",
     "**Trainer tools > History**: records and team bests for the workout on screen, and past winners. Bests only compare sessions of the same workout." ] },
+  { h: "Race simulation", p: [
+    "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
+    "Starts are spread out by themselves, half on runs and half on stations. To change one, **Trainer tools > Start stations**: tap **Swap** on two people.",
+    "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and buzzes at each switch. The big screen shows who's where and when the next switch is. There's no ranking." ] },
   { h: "Teams", p: [
     "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests." ] },
 ];
@@ -1585,7 +1715,7 @@ function renderSections() {
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
 
-function renderAll() { renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); }
+function renderAll() { renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); }
 
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
@@ -1615,6 +1745,10 @@ document.addEventListener("click", e => {
   }
   else if (b.dataset.share !== undefined) {
     return share(baseUrl() + (b.dataset.share ? "?team=" + b.dataset.share : ""), b);
+  }
+  else if (b.dataset.swap !== undefined) {
+    const i = +b.dataset.swap;
+    if (swapPick === null) swapPick = i; else { if (swapPick !== i) swapStarts(swapPick, i); swapPick = null; }
   }
   else if (b.dataset.qr !== undefined) { qrFor = b.dataset.qr; return renderQrCard(); }
   else if (b.id === "qrOpen") { qrFor = ""; renderQrCard(); $("qrCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
