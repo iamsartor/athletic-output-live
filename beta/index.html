@@ -100,6 +100,9 @@ tr.lead td.pts { color: var(--accent); }
 
 .setup-row { display: flex; gap: 8px; align-items: center; }
 .setup-row input { flex: 1; min-width: 0; font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.setup-row select.size { font: inherit; padding: 9px 4px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); flex: none; }
+td .avg { display: block; font-size: .7rem; color: var(--muted); white-space: nowrap; }
+.scr-tbl .avg { font-size: .45em; }
 .setup-row .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
 .ghost { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); font-weight: 600; font-size: .9rem; }
 .ghost.danger { color: var(--danger); border-color: var(--danger); }
@@ -143,9 +146,10 @@ h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; co
 .nn-t { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .st.cur { border: 2px solid var(--tc); padding: 9px; }
 .nownext.rot { border-left: 4px solid var(--tc, var(--accent)); }
-.nownext.flash { animation: flash 1.2s ease-out 2; }
+.nownext.flash, .clock-val.flash, .scr-clock.flash { animation: flash 1.2s ease-out 2; }
+.clock-val.flash, .scr-clock.flash { border-radius: 8px; }
 @keyframes flash { 0% { background: var(--tc, var(--accent)); color: var(--accent-fg); } 100% { background: var(--press); } }
-@media (prefers-reduced-motion: reduce) { .nownext.flash { animation: none; outline: 3px solid var(--tc, var(--accent)); } }
+@media (prefers-reduced-motion: reduce) { .nownext.flash, .clock-val.flash, .scr-clock.flash { animation: none; outline: 3px solid var(--tc, var(--accent)); } }
 .rot-board { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
 .rot-head { font-family: var(--display); font-weight: 800; font-size: clamp(1.4rem, 3vw, 3rem); }
 .rot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
@@ -379,6 +383,8 @@ function normWorkout(w) {
     name: txt(w.name || "Workout", 40), place: txt(w.place || "", 40),
     teams: int(w.teams, 1, 20, 4), teamSize: int(w.teamSize, 1, 20, 3), rounds: w.slot ? 1 : int(w.rounds, 1, 10, 1), stations,
     ...(w.slot !== undefined && int(parseCap(w.slot), 30, 3600, 0) ? { slot: int(parseCap(w.slot), 30, 3600, 0), ranked: w.ranked === true } : {}),
+    // A clock for workouts that don't need one otherwise: "timer": "5:00" counts down, true counts up.
+    ...(w.timer !== undefined && w.timer !== false && !w.slot ? { timer: w.timer === true ? 0 : int(parseCap(w.timer), 10, 3600, 0) } : {}),
   };
 }
 const parseWorkout = s => { try { return normWorkout(JSON.parse(s)); } catch { return null; } };
@@ -504,13 +510,16 @@ const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c
 const now = () => Date.now() + (live ? serverOffset : 0);
 const clockStart = r => (live ? liveClocks : state.clocks)["r" + r] || 0;
 const paused = r => clockStart(r) < 0;
-const timed = () => !!W.slot || W.stations.some(s => s.type !== "count");
-const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
+const timed = () => !!W.slot || W.timer !== undefined || W.stations.some(s => s.type !== "count");
+const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(W.timer || 0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
+// A countdown timer ("timer": "5:00") is restarted by the trainer for each block.
+const timerDone = () => !!W.timer && clockStart(state.round) > 0 && elapsed(state.round) >= clockEnd();
 const elapsed = r => { const v = clockStart(r); return v < 0 ? -v / 1000 : v ? Math.max(0, (now() - v) / 1000) : 0; };
 function clockText() {
   const end = clockEnd(), el = end ? Math.min(elapsed(state.round), end) : elapsed(state.round);
   const p = paused(state.round) ? " · paused" : "";
-  if (W.stations.every(s => s.type === "amrap") && end) return `${fmt(end - el)} left${p}`;
+  if (W.timer && end && el >= end) return "Time!";
+  if ((W.timer || W.stations.every(s => s.type === "amrap")) && end) return `${fmt(end - el)} left${p}`;
   return fmt(el) + (end ? ` / ${fmt(end)}` : "") + p;
 }
 const minuteNow = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60) + 1) : 0;
@@ -595,7 +604,7 @@ function applyRemote(v) {
   setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
   liveClocks = v.clock || {};
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
-  state.teams = ids.map(id => ({ id, name: v.teams[id].name, order: v.teams[id].order, counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
+  state.teams = ids.map(id => ({ id, name: v.teams[id].name, order: v.teams[id].order, ...(v.teams[id].size ? { size: v.teams[id].size } : {}), counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
   // Taps not yet sent win over what the server has, so the counter never jumps back.
   for (const [k, x] of pending) {
     const [id, r, key] = k.split("/"), t = state.teams.find(t => t.id === id);
@@ -614,7 +623,7 @@ function applyRemote(v) {
   state.active = Math.min(state.active, state.teams.length - 1);
   if (!editing) renderBoard();
   renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
-  if (!(document.activeElement && document.activeElement.dataset.name !== undefined)) renderSetup();
+  if (!(document.activeElement && (document.activeElement.dataset.name !== undefined || document.activeElement.dataset.size !== undefined))) renderSetup();
   save();
 }
 
@@ -678,6 +687,17 @@ function rename(i, name) {
   if (live) return live.fb.set(path("teams", state.teams[i].id, "name"), name.slice(0, 24));
   state.teams[i].name = name;
 }
+// How many athletes a team has today (late cancels): output per athlete is shown next to the totals.
+// Not set means the workout's teamSize.
+const athletes = t => t.size || W.teamSize;
+const perAthleteOn = () => state.teams.some(t => t.size) && !W.slot;
+function setSize(i, n) {
+  const v = n >= 1 && n <= 20 ? Math.round(n) : null;
+  if (live) return live.fb.set(path("teams", state.teams[i].id, "size"), v);
+  if (v) state.teams[i].size = v; else delete state.teams[i].size;
+}
+// Per athlete: one decimal below 100 so small numbers like lanes still differ.
+const perAthlete = (s, t) => { if (s.type !== "count") return ""; const x = -score(s, t).key[0] / athletes(t); return x < 100 ? String(Math.round(x * 10) / 10) : String(Math.round(x)); };
 function addTeam() {
   if (live) return live.fb.set(path("teams", newId()), { name: "Team " + (state.teams.length + 1), order: Date.now() });
   state.teams.push(newTeam(state.teams.length + 1)); state.active = state.teams.length - 1;
@@ -775,7 +795,7 @@ async function share(url, btn) {
 }
 
 function renderHeader() {
-  const bits = [W.place, `${W.teams} teams of ${W.teamSize}`, W.rounds > 1 ? `${W.rounds} rounds` : ""].filter(Boolean);
+  const bits = [W.place, W.slot ? `${W.stations.length} stations · move on every ${fmt(W.slot)}` : `${W.teams} teams of ${W.teamSize}`, W.rounds > 1 ? `${W.rounds} rounds` : ""].filter(Boolean);
   $("title").firstChild.textContent = W.name;
   $("subtitle").textContent = bits.join(" · ");
   document.title = W.name + " Live";
@@ -945,6 +965,18 @@ function rotCue() {
   document.querySelectorAll("[data-rot]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
 }
 
+// Every phone buzzes when a countdown timer runs out; the trainer's buttons change to Start again.
+let lastDone = false;
+function timerCue() {
+  const done = timerDone(), was = lastDone;
+  lastDone = done;
+  if (done === was) return;
+  if (canRunClock() && !editing) renderBoard();
+  if (!done) return;
+  try { !screenMode && navigator.vibrate && navigator.vibrate([600, 200, 600]); } catch {}
+  document.querySelectorAll("[data-clock]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
+}
+
 // Now / Next for an EMOM: this minute's move with the time left, and the next move (or the next part).
 function nowNext(s) {
   const r = state.round, el = elapsed(r), started = clockStart(r);
@@ -971,7 +1003,7 @@ function clockBar() {
     <span class="actions"><button class="solid" id="clockSetOk">Set</button><button class="ghost" id="clockNo">Cancel</button></span></div>`;
   const ctl = !canRunClock() ? (started ? "" : `<span class="note">The trainer starts the clock</span>`)
     : `<span class="actions" id="clockArea">${!started ? `<button class="solid" id="clockStart">Start clock</button>`
-      : paused(r) ? `<button class="solid" id="clockResume">Resume</button>` : `<button class="ghost" id="clockPause">Pause</button>`}
+      : paused(r) ? `<button class="solid" id="clockResume">Resume</button>` : timerDone() ? `<button class="solid" id="clockStart">Start again</button>` : `<button class="ghost" id="clockPause">Pause</button>`}
       <button class="ghost" id="clockSet">Set time</button>${started ? `<button class="ghost" id="clockReset">Reset</button>` : ""}</span>`;
   return `<div class="clockbar"><span class="clock-val" data-clock>${clockText()}</span>${ctl}</div>`;
 }
@@ -1043,7 +1075,7 @@ setInterval(() => {
   document.querySelectorAll("[data-clock]").forEach(el => el.textContent = clockText());
   document.querySelectorAll("[data-rot]").forEach(el => { const h = rotHtml(+el.dataset.rot); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rotboard]").forEach(el => { const h = rotBoardHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
-  rotCue();
+  rotCue(); timerCue();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
@@ -1221,7 +1253,7 @@ function renderScreen() {
       <p class="scr-sub">${view === "missing" ? "Today's session hasn't started yet. This screen switches to it by itself." : view === "error" ? esc(liveMsg) : "Connecting…"}</p>`;
     return;
   }
-  const { rk, rows, n } = table(W, state.teams), one = n === 1, any = anyScores() && n > 0;
+  const { rk, rows, n } = table(W, state.teams), one = n === 1, any = anyScores() && n > 0, pa = perAthleteOn();
   const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Runde " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
   el.innerHTML = `
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
@@ -1234,8 +1266,8 @@ function renderScreen() {
         <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
         <tbody>${rows.map(({ t, i, pts, place }) => `
           <tr class="${any && place === 1 ? "lead" : ""}"><td class="place">${any ? place : ""}</td>
-            <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span></td>
-            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
+            <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
+            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
             ${n > 1 ? `<td class="pts">${pts}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
       ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
@@ -1309,15 +1341,15 @@ function celebrate() {
 
 function renderStandings() {
   if (!state.teams.length) { $("standings").innerHTML = ""; return; }
-  const { rk, rows, n } = table(W, state.teams), one = n === 1;
+  const { rk, rows, n } = table(W, state.teams), one = n === 1, pa = perAthleteOn();
   const any = anyScores();
   const best = rows[0].pts;
   $("standings").innerHTML = `
     <thead><tr><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n ? `<th>${one ? "Rank" : "Points"}</th>` : ""}</tr></thead>
     <tbody>${rows.map(({ t, i, pts }) => `
       <tr class="${n && any && pts === best ? "lead" : ""}">
-        <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span></td>
-        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
+        <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
+        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
         ${n ? `<td class="pts">${pts}</td>` : ""}
       </tr>`).join("")}</tbody>`;
   const over = W.rounds > 1 ? " over all rounds" : "";
@@ -1328,7 +1360,8 @@ function renderStandings() {
     : one && !free.length
     ? `Teams are ranked by their result${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
     : one ? `Teams are ranked by ${ranks1.name}${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
-    : `Each column is the team's result${over}, with its rank below. Points add up the ranks across the ${n} ranked stations, so the lowest score wins. Tied teams share a rank.`) + (n ? freeNote : "");
+    : `Each column is the team's result${over}, with its rank below. Points add up the ranks across the ${n} ranked stations, so the lowest score wins. Tied teams share a rank.`) + (n ? freeNote : "")
+    + (pa ? " \"each\" is the total divided by the team's athletes (set under Teams); the ranking uses the totals." : "");
   celebrate();
 }
 
@@ -1337,6 +1370,7 @@ function renderSetup() {
     <div class="setup-row" style="${tc(i)}">
       <span class="dot"></span>
       <input id="name-${t.id}" data-name="${i}" value="${esc(t.name)}" aria-label="Team ${i + 1} name" maxlength="24">
+      ${W.slot ? "" : `<select class="size" data-size="${i}" aria-label="Athletes in ${esc(t.name)}">${[...Array(Math.max(8, W.teamSize + 2))].map((_, k) => `<option value="${k + 1}"${athletes(t) === k + 1 ? " selected" : ""}>${k + 1} athl.</option>`).join("")}</select>`}
       ${state.teams.length > 1 ? `<button class="ghost" data-remove="${i}" aria-label="Remove ${esc(t.name)}">Remove</button>` : ""}
     </div>`).join("");
 }
@@ -1398,11 +1432,14 @@ TYPES
 - "amrap": as many rounds and reps as possible. Add "cap" as "mm:ss" (the AMRAP length) and "repsPerRound" if one round has a fixed number of reps.
 - "emom": every minute on the minute. Add "minutes" = the total number of minutes (e.g. 4 moves for 4 rounds = 16), "moves" = the list of what happens in minute 1, 2, 3 ... (it repeats; include "Rest" if a minute is rest), and "measure": "done" (usual: a grid where minutes tick themselves off on the shared clock and a team only taps the ones it missed) or "reps" (only if the card asks for max reps each minute). An EMOM is each team's own progress and isn't ranked. Add "scored": true only if the card says the EMOM result counts towards the winner.
 
+TIMER
+The shared clock shows on its own for time, amrap and emom stations. If every station is "count" but the stations run for a set time (for example 5 minutes at each station before the teams switch), add "timer": "5:00" to the workout: a countdown the trainer starts for each block, and every phone buzzes when it runs out. Use "timer": true for a clock that just counts up.
+
 ROTATION (race simulations)
 If athletes go through the stations in race order and everyone moves on at the same time (for example half on the treadmills and half on stations, switching every 3:30), add "slot": "3:30" to the workout: the time between switches. Give each station whose work is shorter a "time", e.g. "3:00"; the rest of the slot is for moving on. List the stations in race order, including each run. Each athlete or pair is one entry ("teams" = how many, up to 20, "teamSize" 1 or 2); the app spreads their starting stations by itself. Use "count" stations. Rotation workouts aren't ranked; add "ranked": true only if the card wants a winner.
 
 EXAMPLE 1 (max effort stations, done twice)
-{"id":"team-output-b","name":"Team Output B","place":"Thursday Athletic","teams":4,"teamSize":3,"rounds":2,"stations":[
+{"id":"team-output-b","name":"Team Output B","place":"Thursday Athletic","teams":4,"teamSize":3,"rounds":2,"timer":"5:00","stations":[
  {"id":"erg","name":"Erg","type":"count","unit":"cals","steps":[1,5,10],"info":"90s/person · Ski, Row, Bike"},
  {"id":"wb","name":"Wallballs","type":"count","unit":"reps","steps":[1,5,10],"info":"5 min AMRAP · max 20/ball"},
  {"id":"run","name":"Run","type":"count","unit":"meters","steps":[10,50,100],"info":"5 min · +1% incline/min"}]}
@@ -1454,6 +1491,12 @@ function checkWorkout(text) {
     if (c === null || !(c >= 30 && c <= 3600)) errors.push('slot must be a time like "3:30" (30 seconds to 60 minutes).');
     else if (typeof o.slot !== "string" || !/^\d+:\d\d$/.test(o.slot.trim())) fixed.push(`slot ${JSON.stringify(o.slot)} read as ${fmt(c)}`);
   }
+  if (o.timer !== undefined && o.timer !== true && o.timer !== false) {
+    const c = parseCap(o.timer);
+    if (c === null || !(c >= 10 && c <= 3600)) errors.push('timer must be a time like "5:00" (10 seconds to 60 minutes), or true for a clock that counts up.');
+    else if (typeof o.timer !== "string" || !/^\d+:\d\d$/.test(o.timer.trim())) fixed.push(`timer ${JSON.stringify(o.timer)} read as ${fmt(c)}`);
+  }
+  if (o.timer !== undefined && o.slot !== undefined) warnings.push('The workout has a "slot", so "timer" is ignored: the rotation has its own clock.');
   if (o.rounds !== undefined && !(Number.isInteger(+o.rounds) && o.rounds >= 1 && o.rounds <= 10)) errors.push("rounds must be a whole number from 1 to 10.");
   if (!Array.isArray(o.stations) || !o.stations.length) errors.push("The workout needs at least one station.");
   else {
@@ -1547,7 +1590,7 @@ function renderWorkout(force) {
     <div class="actions"><button class="ghost" id="wCheck">Check</button>
       ${pc && pc.w ? `<button class="solid" id="wSave">${saved[pc.w.id] ? "Replace" : "Save"} ${esc(pc.w.name)}</button>` : ""}</div>
     ${pc ? pc.errors.length ? pc.errors.map(e => `<p class="err">${esc(e)}</p>`).join("")
-      : `<p class="note"><b>${esc(pc.w.name)}</b>, ${pc.w.teams} teams of ${pc.w.teamSize}${pc.w.rounds > 1 ? `, ${pc.w.rounds} rounds (every station repeats)` : ""}${pc.w.slot ? `, everyone moves on every ${fmt(pc.w.slot)}${pc.w.ranked ? "" : ", not ranked"}` : ""}. Check the stations before you save:</p>
+      : `<p class="note"><b>${esc(pc.w.name)}</b>, ${pc.w.teams} teams of ${pc.w.teamSize}${pc.w.rounds > 1 ? `, ${pc.w.rounds} rounds (every station repeats)` : ""}${pc.w.slot ? `, everyone moves on every ${fmt(pc.w.slot)}${pc.w.ranked ? "" : ", not ranked"}` : ""}${pc.w.timer !== undefined ? (pc.w.timer ? `, ${fmt(pc.w.timer)} countdown timer` : ", clock counts up") : ""}. Check the stations before you save:</p>
         <ul class="note">${pc.w.stations.map(s => `<li><b>${esc(s.name)}</b>: ${esc(describe(s))}${s.time ? `, ${fmt(s.time)} work` : ""}${s.type === "count" ? ", + buttons " + s.steps.join("/") : ""}${s.type === "emom" ? ": " + esc(s.moves.join(", ")) : ""}${s.info ? ` · ${esc(s.info)}` : ""}</li>`).join("")}</ul>
         ${pc.warnings.map(x => `<p class="err">Please check: ${esc(x)}</p>`).join("")}
         ${pc.fixed.length ? `<p class="note">Fixed automatically: ${esc(pc.fixed.join("; "))}.</p>` : ""}` : ""}
@@ -1629,7 +1672,8 @@ const GUIDE = [
   { h: "The clock", p: [
     "Timed workouts (for time, AMRAP, EMOM) have a shared clock. **Start clock** on the trainer phone; every phone and the big screen follow it.",
     "**Pause** stops the clock and the EMOM minutes (for a break); **Resume** carries on. **Set time** jumps to an exact time like 6:30, for example after a false start; EMOM ticks for minutes not reached yet are cleared. **Reset** starts over (it asks first).",
-    "With several rounds, each round has its own clock: pick the round at the top first." ] },
+    "With several rounds, each round has its own clock: pick the round at the top first.",
+    "A workout with a **timer** (like 5:00) gets a countdown even if it only counts reps: every phone buzzes and shows **Time!** when it runs out, and **Start again** begins the next block." ] },
   { h: "Fixing scores as the trainer", p: [
     "Pick a team with the tabs above the stations to see and change its numbers, the same way a team does." ] },
   { h: "Workouts", p: [
@@ -1643,7 +1687,8 @@ const GUIDE = [
     "Starts are spread out by themselves, half on runs and half on stations. To change one, **Trainer tools > Start stations**: tap **Swap** on two people.",
     "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and buzzes at each switch. The big screen shows who's where and when the next switch is. There's no ranking." ] },
   { h: "Teams", p: [
-    "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests." ] },
+    "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests.",
+    "Short on people? Set each team's athletes there (like **2 athl.**). The standings then show the output **each** athlete did next to the totals; the ranking still uses the totals. It's set per session." ] },
 ];
 function renderHelp() {
   const el = $("help");
@@ -1804,6 +1849,7 @@ document.addEventListener("click", e => {
 
 document.addEventListener("change", e => {
   if (e.target.id === "startPick") startPick = e.target.value;
+  if (e.target.dataset.size !== undefined) { setSize(+e.target.dataset.size, +e.target.value); save(); renderAll(); }
 });
 
 document.addEventListener("input", e => {
