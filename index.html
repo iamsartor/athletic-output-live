@@ -405,7 +405,7 @@ function normWorkout(w) {
     if (o.type === "amrap" && s.repsPerRound) o.repsPerRound = int(s.repsPerRound, 1, 10000, 0);
     if (w.slot !== undefined && s.time !== undefined) o.time = int(parseCap(s.time), 10, 3600, 0) || undefined;
     // Intervals inside a station of a rotation: "work": "1:30", "switch": "0:30" (Erg: swap machines every 2:00).
-    if (w.slot !== undefined && s.work !== undefined && int(parseCap(s.work), 5, 3600, 0)) { o.work = int(parseCap(s.work), 5, 3600, 0); o.switch = int(s.switch === undefined ? 0 : parseCap(s.switch), 0, 600, 0); }
+    if (w.slot !== undefined && s.work !== undefined && int(parseSecs(s.work), 5, 3600, 0)) { o.work = int(parseSecs(s.work), 5, 3600, 0); o.switch = int(s.switch === undefined ? 0 : parseSecs(s.switch), 0, 600, 0); }
     if (o.type === "emom") {
       o.minutes = int(s.minutes, 1, 60, 10);
       o.measure = s.measure === "done" ? "done" : "reps";
@@ -501,6 +501,13 @@ function parseCap(x) {
   if (typeof x === "number") return x > 0 && x < 60 ? x * 60 : x;
   const m = String(x).trim().match(/^(\d{1,3})\s*(?:min(?:ute[ns]?)?\.?|m|')$/i);
   return m ? +m[1] * 60 : parseTime(x);
+}
+// Work and switch inside a station are short, so plain numbers are seconds (30 or "30" is 0:30, "30s" too);
+// "1:30" and "2 min" still work.
+function parseSecs(x) {
+  if (typeof x === "number") return x;
+  const m = String(x).trim().match(/^(\d{1,4})\s*(?:s|secs?|seconds?)?$/i);
+  return m ? +m[1] : parseCap(x);
 }
 const baseUrl = () => location.origin + location.pathname;
 
@@ -970,6 +977,8 @@ function rotAt(i) {
   // Intervals inside the station: part n of parts, working or switching.
   if (s.work) {
     const cyc = s.work + s.switch, n = Math.floor(t / cyc), parts = Math.ceil(work / cyc), u = t - n * cyc;
+    // The switch after the last part is the move to the next station (when the station has no "time").
+    if (u >= s.work && n + 1 >= parts) return { k, p, s, phase: "move", left: W.slot - t, next };
     if (u >= s.work) return { k, p, s, phase: "switch", part: n + 1, parts, left: cyc - u, next };
     return { k, p, s, phase: "work", part: n + 1, parts, left: Math.min(s.work - u, work - t), next };
   }
@@ -1573,7 +1582,7 @@ The shared clock shows on its own for time, amrap and emom stations. If every st
 
 ROTATION (race simulations)
 If athletes go through the stations in race order and everyone moves on at the same time (for example half on the treadmills and half on stations, switching every 3:30), add "slot": "3:30" to the workout: the time between switches. Give each station whose work is shorter a "time", e.g. "3:00"; the rest of the slot is for moving on. List the stations in race order, including each run. Each athlete or pair is one entry ("teams" = how many, up to 20, "teamSize" 1 or 2); the app spreads their starting stations by itself. Use "count" stations. Rotation workouts aren't ranked; add "ranked": true only if the card wants a winner.
-The same works for team stations where all teams switch together (for example 4 teams on 4 stations, 6:00 per station including rest): "slot": "6:00", "ranked": true, and "rounds" if the whole rotation is done again. If athletes swap machines inside a station (Ski, Row, Bike: 1:30 work, 0:30 to swap), give that station "work": "1:30" and "switch": "0:30".
+The same works for team stations where all teams switch together (for example 4 teams on 4 stations, 6:00 per station including rest): "slot": "6:00", "ranked": true, and "rounds" if the whole rotation is done again. If athletes swap machines inside a station (Ski, Row, Bike: 1:30 work, 0:30 to swap), give that station "work": "1:30" and "switch": "0:30" (write times as "m:ss"; a plain number there means seconds).
 
 EXAMPLE 1 (max effort stations, done twice)
 {"id":"team-output-b","name":"Team Output B","place":"Thursday Athletic","teams":4,"teamSize":3,"rounds":2,"timer":"5:00","stations":[
@@ -1660,9 +1669,13 @@ function checkWorkout(text) {
         else if (parseCap(o.slot) && c > parseCap(o.slot)) errors.push(`${n}: its time (${fmt(c)}) is longer than the slot (${fmt(parseCap(o.slot))}).`);
       }
       if (s.work !== undefined) {
-        const c = parseCap(s.work), sw = s.switch === undefined ? 0 : parseCap(s.switch);
+        const c = parseSecs(s.work), sw = s.switch === undefined ? 0 : parseSecs(s.switch);
+        const len = Math.min(parseCap(o.slot) || 0, s.time === undefined ? Infinity : parseCap(s.time) || Infinity);
         if (o.slot === undefined) warnings.push(`${n} has "work" but the workout has no "slot", so it's ignored.`);
         else if (c === null || !(c >= 5) || sw === null || !(sw >= 0)) errors.push(`${n}: work and switch must be times like "1:30" and "0:30".`);
+        else if (sw > 600) errors.push(`${n}: switch is ${fmt(sw)}. It's the time to change machines, like "0:30".`);
+        else if (len && c + sw > len) warnings.push(`${n}: ${fmt(c)} work + ${fmt(sw)} switch is longer than its ${fmt(len)}, so there's only one part.`);
+        else if (sw > c) warnings.push(`${n}: the switch (${fmt(sw)}) is longer than the work (${fmt(c)}). Is that right?`);
       }
       if (s.type === "amrap" && !s.cap) warnings.push(`${n} has no length. Add a cap like "20:00" so the clock counts down.`);
     });
