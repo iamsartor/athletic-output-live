@@ -24,18 +24,19 @@
   --accent-fg: #ffffff;
   --press: #e3e7e2;
   --danger: #c2321f;
+  --go: #e8457a; /* big screen when work starts: pink-red, against the teal rest colour */
   --t1: #1f6feb; --t2: #d9480f; --t3: #2b8a3e; --t4: #9c36b5; --t5: #c08a00; --t6: #0c8599;
   --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
-  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55; --go: #f0507f;
   --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
   color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
-  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55; --go: #f0507f;
   --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
   color-scheme: dark }
 
@@ -226,7 +227,7 @@ select.date { max-width: 100%; }
 /* Big screen: its own colour for rest, and a strong colour when work starts that fades back to normal. */
 body.screen { transition: background-color 4s ease; }
 body.screen.phase-rest { background: color-mix(in srgb, var(--t6) 30%, var(--bg)); transition-duration: .4s; }
-body.screen.phase-go { background: color-mix(in srgb, var(--t5) 80%, var(--bg)); transition-duration: .2s; }
+body.screen.phase-go { background: color-mix(in srgb, var(--go) 78%, var(--bg)); transition-duration: .2s; }
 .phase-tag { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 6vw, 6rem); letter-spacing: .06em; line-height: 1; text-transform: uppercase; }
 .phase-tag:empty { display: none; }
 body.screen .wrap { max-width: none; padding: 2.5vw 3vw; }
