@@ -155,6 +155,14 @@ h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; co
 .rot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .rot-cell { background: var(--surface); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; min-height: 80px; opacity: .6; }
 .rot-cell.busy { opacity: 1; }
+.scr-clock-l { display: block; font-size: .18em; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: right; }
+.rot-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.strip-cell { background: var(--surface); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.strip-cell.moving { outline: 3px solid var(--accent); }
+.strip-cell b { font-size: clamp(1rem, 1.6vw, 1.5rem); }
+.strip-cell .tname { font-size: clamp(.9rem, 1.4vw, 1.3rem); }
+.strip-t { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 5vw, 5rem); font-variant-numeric: tabular-nums; line-height: 1; }
+.strip-t small { font-size: .35em; color: var(--muted); font-weight: 700; }
 .rot-cell.moving { outline: 3px solid var(--accent); }
 .rot-cell b { font-size: clamp(.9rem, 1.4vw, 1.3rem); }
 .rot-cell .tname { font-size: clamp(.9rem, 1.4vw, 1.4rem); }
@@ -1090,6 +1098,8 @@ setInterval(() => {
   document.querySelectorAll("[data-clock]").forEach(el => el.textContent = clockText());
   document.querySelectorAll("[data-rot]").forEach(el => { const h = rotHtml(+el.dataset.rot); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rotboard]").forEach(el => { const h = rotBoardHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
+  if (screenMode && W.slot) document.querySelectorAll("[data-slotclock]").forEach(el => { const h = slotClockHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
+  if (screenMode && W.slot) document.querySelectorAll("[data-rotstrip]").forEach(el => { const h = rotStripHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rothead]").forEach(el => { const h = esc(rotHead()); if (el.innerHTML !== h) el.innerHTML = h; });
   rotCue(); timerCue();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
@@ -1252,7 +1262,26 @@ function gridBar(s, t) {
 function rotHead() {
   const a0 = state.teams.length ? rotAt(0) : null;
   return !a0 ? "" : a0.phase === "wait" ? "Waiting for the clock" : a0.phase === "done" ? "Finished" :
-    `Next switch in ${fmt(Math.ceil(W.slot - (elapsed(state.round) - a0.k * W.slot)))} · station ${a0.k + 1} of ${W.stations.length}${paused(state.round) ? " · paused" : ""}`;
+    `Station ${a0.k + 1} of ${W.stations.length} · ${fmt(Math.min(elapsed(state.round), clockEnd()))} of ${fmt(clockEnd())}${paused(state.round) ? " · paused" : ""}`;
+}
+// The big screen's clock in a rotation: the time to the next switch, readable across the room.
+function slotClock() {
+  const a0 = state.teams.length ? rotAt(0) : null;
+  if (!a0 || a0.phase === "wait") return { l: "Ready", v: fmt(W.slot) };
+  if (a0.phase === "done") return { l: "Round done", v: "0:00" };
+  return { l: paused(state.round) ? "Paused" : "Next switch", v: fmt(Math.ceil(W.slot - (elapsed(state.round) - a0.k * W.slot))) };
+}
+const slotClockHtml = () => { const c = slotClock(); return `<span class="scr-clock-l">${esc(c.l)}</span>${esc(c.v)}`; };
+// Each station's own countdown on the big screen (what the phones show), with the team that's there.
+function rotStripHtml() {
+  const at = state.teams.map((t, i) => [t, i, rotAt(i)]);
+  return W.stations.map((s, p) => {
+    const here = at.filter(([, , a]) => a.p === p && a.phase !== "done" && a.phase !== "wait"), a = here[0]?.[2];
+    const ph = !a ? "" : a.phase === "move" ? `Move ${fmt(Math.ceil(a.left))}` : a.phase === "switch" ? `Switch ${fmt(Math.ceil(a.left))}`
+      : `${fmt(Math.ceil(a.left))}${a.part ? ` <small>part ${a.part}/${a.parts}</small>` : ""}`;
+    return `<div class="strip-cell${a && (a.phase === "move" || a.phase === "switch") ? " moving" : ""}"><b>${esc(s.name)}</b>${here.map(([t, i]) =>
+      `<span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>`).join("")}<span class="strip-t">${ph}</span></div>`;
+  }).join("");
 }
 function rotBoardHtml() {
   const at = state.teams.map((t, i) => [t, i, rotAt(i)]);
@@ -1276,9 +1305,9 @@ function renderScreen() {
   const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Runde " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
   el.innerHTML = `
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
-      ${timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
+      ${W.slot ? `<div class="scr-clock" data-slotclock>${slotClockHtml()}</div>` : timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
     ${W.stations.filter(s => s.type === "emom").map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
-    ${W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div>` : ""}
+    ${W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
     ${W.slot && !W.ranked ? `<div class="scr-main"><div class="rot-board" data-rotboard>${rotBoardHtml()}</div>
       ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
     <div class="scr-main">
@@ -1712,7 +1741,7 @@ const GUIDE = [
     "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
     "Starts are spread out by themselves, half on runs and half on stations. To change one, **Trainer tools > Start stations**: tap **Swap** on two people.",
     "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and buzzes at each switch. The big screen shows who's where and when the next switch is. There's no ranking.",
-    "Team Output works the same way with **ranked** on: every team moves on every 6:00, each round is a whole rotation, and the big screen keeps the standings with the time to the next switch. A station with **work** and **switch** (the Erg) shows its own parts: **part 2 of 3**, then **Switch** to the next machine." ] },
+    "Team Output works the same way with **ranked** on: every team moves on every 6:00, each round is a whole rotation, and the big screen keeps the standings, with a big countdown to the next switch and each station's own timer (the same as on the phones). A station with **work** and **switch** (the Erg) shows its own parts: **part 2 of 3**, then **Switch** to the next machine." ] },
   { h: "Teams", p: [
     "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests.",
     "Short on people? Set each team's athletes there (like **2 athl.**). The standings then show the output **each** athlete did next to the totals; the ranking still uses the totals. It's set per session." ] },
