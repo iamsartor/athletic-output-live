@@ -970,6 +970,8 @@ function rotAt(i) {
   // Intervals inside the station: part n of parts, working or switching.
   if (s.work) {
     const cyc = s.work + s.switch, n = Math.floor(t / cyc), parts = Math.ceil(work / cyc), u = t - n * cyc;
+    // The switch after the last part is the move to the next station (when the station has no "time").
+    if (u >= s.work && n + 1 >= parts) return { k, p, s, phase: "move", left: W.slot - t, next };
     if (u >= s.work) return { k, p, s, phase: "switch", part: n + 1, parts, left: cyc - u, next };
     return { k, p, s, phase: "work", part: n + 1, parts, left: Math.min(s.work - u, work - t), next };
   }
@@ -1569,6 +1571,8 @@ TYPES
 - "emom": every minute on the minute. Add "minutes" = the total number of minutes (e.g. 4 moves for 4 rounds = 16), "moves" = the list of what happens in minute 1, 2, 3 ... (it repeats; include "Rest" if a minute is rest), and "measure": "done" (usual: a grid where minutes tick themselves off on the shared clock and a team only taps the ones it missed) or "reps" (only if the card asks for max reps each minute). An EMOM is each team's own progress and isn't ranked. Add "scored": true only if the card says the EMOM result counts towards the winner.
 
 TIMER
+TIMES: every time in the workout (cap, timer, slot, time, work, switch) is written "m:ss" as a string in quotes: "0:30" is 30 seconds, "1:30" is 90 seconds, "6:00" is 6 minutes, "18:00" is 18 minutes. Never a plain number like 30 or 90, and never "30s" or "5 min".
+
 The shared clock shows on its own for time, amrap and emom stations. If every station is "count" but the stations run for a set time (for example 5 minutes at each station before the teams switch), add "timer": "5:00" to the workout: a countdown the trainer starts for each block, and every phone buzzes when it runs out. Use "timer": true for a clock that just counts up.
 
 ROTATION (race simulations)
@@ -1589,7 +1593,7 @@ EXAMPLE 2 ("Part A: EMOM 12, 3 moves. Part B: 4 rounds for time, 18 min cap")
 
 BEFORE YOU ANSWER, CHECK
 - Every station id is 1-8 lowercase letters or digits (no dashes, underscores or spaces).
-- Every cap is a string like "18:00".
+- Every time (cap, timer, slot, time, work, switch) is a string "m:ss", e.g. "0:30" or "18:00", never a plain number.
 - "rounds" is 1 unless the whole workout is repeated and scored per round.
 - The JSON parses: no comments, no trailing commas.
 
@@ -1618,20 +1622,21 @@ function checkWorkout(text) {
   }
   if (!o || typeof o !== "object" || Array.isArray(o)) return { errors: ["The text isn't a workout."] };
   const errors = [], fixed = [], warnings = [];
+  // Every time in a workout is written "m:ss" in quotes ("0:30", "6:00", "18:00"), so 30 can't be read two ways.
+  const mss = (v, what, eg) => typeof v === "string" && /^\d{1,3}:[0-5]\d$/.test(v.trim()) ? parseTime(v)
+    : (errors.push(`${what} must be written "m:ss" in quotes, like "${eg}" (not ${JSON.stringify(v)}).`), null);
   if (!o.name) errors.push("The workout needs a name.");
   const id = slug(o.id || o.name);
   if (o.id !== undefined && id !== o.id) fixed.push(`id "${o.id}" became "${id}"`);
   o.id = id;
   if (isBuiltIn(o.id)) { o.id = o.id.slice(0, 15) + "-copy"; fixed.push(`id became "${o.id}" because a built-in workout uses the other one`); }
   if (o.slot !== undefined) {
-    const c = parseCap(o.slot);
-    if (c === null || !(c >= 30 && c <= 3600)) errors.push('slot must be a time like "3:30" (30 seconds to 60 minutes).');
-    else if (typeof o.slot !== "string" || !/^\d+:\d\d$/.test(o.slot.trim())) fixed.push(`slot ${JSON.stringify(o.slot)} read as ${fmt(c)}`);
+    const c = mss(o.slot, "slot", "6:00");
+    if (c !== null && !(c >= 30 && c <= 3600)) errors.push('slot must be from "0:30" to "60:00".');
   }
   if (o.timer !== undefined && o.timer !== true && o.timer !== false) {
-    const c = parseCap(o.timer);
-    if (c === null || !(c >= 10 && c <= 3600)) errors.push('timer must be a time like "5:00" (10 seconds to 60 minutes), or true for a clock that counts up.');
-    else if (typeof o.timer !== "string" || !/^\d+:\d\d$/.test(o.timer.trim())) fixed.push(`timer ${JSON.stringify(o.timer)} read as ${fmt(c)}`);
+    const c = mss(o.timer, "timer", "5:00");
+    if (c !== null && !(c >= 10 && c <= 3600)) errors.push('timer must be from "0:10" to "60:00", or true for a clock that counts up.');
   }
   if (o.timer !== undefined && o.slot !== undefined) warnings.push('The workout has a "slot", so "timer" is ignored: the rotation has its own clock.');
   if (o.rounds !== undefined && !(Number.isInteger(+o.rounds) && o.rounds >= 1 && o.rounds <= 10)) errors.push("rounds must be a whole number from 1 to 10.");
@@ -1649,20 +1654,26 @@ function checkWorkout(text) {
       if (!TYPES[s.type || "count"]) errors.push(`${n}: the type must be count, time, amrap or emom.`);
       if (s.type === "emom" && !(Number.isInteger(+s.minutes) && s.minutes >= 1 && s.minutes <= 60)) errors.push(`${n}: minutes must be a whole number from 1 to 60.`);
       if ((s.type === "time" || s.type === "amrap") && s.cap !== undefined) {
-        const c = parseCap(s.cap);
-        if (c === null || !(c >= 0)) errors.push(`${n}: the cap must be a time like "20:00".`);
-        else if (typeof s.cap !== "string" || !/^\d+:\d\d$/.test(s.cap.trim())) fixed.push(`${n}: cap ${JSON.stringify(s.cap)} read as ${fmt(c)}`);
+        mss(s.cap, `${n}: cap`, "20:00");
       }
+      const slot = typeof o.slot === "string" ? parseTime(o.slot) || 0 : 0;
       if (s.time !== undefined) {
-        const c = parseCap(s.time);
         if (o.slot === undefined) warnings.push(`${n} has a time but the workout has no "slot", so it's ignored.`);
-        else if (c === null || !(c >= 10)) errors.push(`${n}: time must be like "3:00".`);
-        else if (parseCap(o.slot) && c > parseCap(o.slot)) errors.push(`${n}: its time (${fmt(c)}) is longer than the slot (${fmt(parseCap(o.slot))}).`);
+        else { const c = mss(s.time, `${n}: time`, "5:00");
+          if (c !== null && c < 10) errors.push(`${n}: time must be at least "0:10".`);
+          else if (c !== null && slot && c > slot) errors.push(`${n}: its time (${fmt(c)}) is longer than the slot (${fmt(slot)}).`); }
       }
-      if (s.work !== undefined) {
-        const c = parseCap(s.work), sw = s.switch === undefined ? 0 : parseCap(s.switch);
+      if (s.work !== undefined || s.switch !== undefined) {
         if (o.slot === undefined) warnings.push(`${n} has "work" but the workout has no "slot", so it's ignored.`);
-        else if (c === null || !(c >= 5) || sw === null || !(sw >= 0)) errors.push(`${n}: work and switch must be times like "1:30" and "0:30".`);
+        else {
+          const c = mss(s.work, `${n}: work`, "1:30"), sw = s.switch === undefined ? 0 : mss(s.switch, `${n}: switch`, "0:30");
+          const len = Math.min(slot || Infinity, typeof s.time === "string" ? parseTime(s.time) || Infinity : Infinity);
+          if (c === null || sw === null) {}
+          else if (c < 5) errors.push(`${n}: work must be at least "0:05".`);
+          else if (sw > 600) errors.push(`${n}: switch is ${fmt(sw)}. It's the time to change machines, like "0:30".`);
+          else if (len < Infinity && c + sw > len) warnings.push(`${n}: ${fmt(c)} work + ${fmt(sw)} switch is longer than its ${fmt(len)}, so there's only one part.`);
+          else if (sw > c) warnings.push(`${n}: the switch (${fmt(sw)}) is longer than the work (${fmt(c)}). Is that right?`);
+        }
       }
       if (s.type === "amrap" && !s.cap) warnings.push(`${n} has no length. Add a cap like "20:00" so the clock counts down.`);
     });
