@@ -1,5 +1,14 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Team Output Live</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Team Output">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#eef0ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111413" media="(prefers-color-scheme: dark)">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;600&display=swap">
@@ -15,18 +24,19 @@
   --accent-fg: #ffffff;
   --press: #e3e7e2;
   --danger: #c2321f;
+  --go: #e8457a; /* big screen when work starts: pink-red, against the teal rest colour */
   --t1: #1f6feb; --t2: #d9480f; --t3: #2b8a3e; --t4: #9c36b5; --t5: #c08a00; --t6: #0c8599;
   --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
   --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
-  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55; --go: #f0507f;
   --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
   color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #111413; --surface: #1b1f1e; --fg: #eef1ee; --muted: #9aa39f; --line: #2c3331;
-  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55;
+  --accent: #5b9dff; --accent-fg: #0b1220; --press: #262c2a; --danger: #ff6b55; --go: #f0507f;
   --t1: #5b9dff; --t2: #ff8a4c; --t3: #5fcf75; --t4: #d27ff0; --t5: #f2c230; --t6: #3fc7dc;
   color-scheme: dark }
 
@@ -105,6 +115,11 @@ td .avg { display: block; font-size: .7rem; color: var(--muted); white-space: no
 .scr-tbl .avg { font-size: .45em; }
 .setup-row .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
 .ghost { padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line); font-weight: 600; font-size: .9rem; }
+.linkish { font-size: .8rem; color: var(--muted); text-decoration: underline; padding: 6px 0; }
+.start-row { flex-wrap: wrap; }
+.start-row.free .n { color: var(--muted); }
+.start-teams { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; flex: 1; justify-content: flex-end; }
+.trainer-entry { margin-top: 14px; text-align: right; }
 .ghost.danger { color: var(--danger); border-color: var(--danger); }
 .solid-danger { padding: 9px 12px; border-radius: 8px; background: var(--danger); color: var(--surface); font-weight: 600; font-size: .9rem; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -158,7 +173,12 @@ h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; co
 .scr-clock-l { display: block; font-size: .18em; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: right; }
 .rot-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .strip-cell { background: var(--surface); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
-.strip-cell.moving { outline: 3px solid var(--accent); }
+.lanes { display: grid; gap: 6px; align-items: stretch; }
+.lane-h { font-family: var(--display); font-weight: 800; color: var(--muted); font-size: clamp(.8rem, 1.2vw, 1.2rem); padding: 0 4px; }
+.lane-t { display: flex; align-items: center; font-size: clamp(.9rem, 1.4vw, 1.4rem); }
+.lane-c { background: color-mix(in srgb, var(--tc) 18%, var(--surface)); border-left: 4px solid var(--tc); border-radius: 8px; padding: 8px 6px; font-weight: 700; font-size: clamp(.7rem, 1.2vw, 1.3rem); overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 2px; }
+.lane-c small { font-weight: 600; color: var(--muted); font-size: .75em; }
+.strip-cell.moving { outline: 3px solid var(--accent); background: color-mix(in srgb, var(--t6) 22%, var(--surface)); }
 .strip-cell b { font-size: clamp(1rem, 1.6vw, 1.5rem); }
 .strip-cell .tname { font-size: clamp(.9rem, 1.4vw, 1.3rem); }
 .strip-t { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 5vw, 5rem); font-variant-numeric: tabular-nums; line-height: 1; }
@@ -204,6 +224,12 @@ select.date { max-width: 100%; }
 .qr-pick { display: flex; gap: 6px; flex-wrap: wrap; }
 .qr-pick button { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line); font-weight: 600; font-size: .9rem; }
 .qr-pick button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+/* Big screen: its own colour for rest, and a strong colour when work starts that fades back to normal. */
+body.screen { transition: background-color 4s ease; }
+body.screen.phase-rest { background: color-mix(in srgb, var(--t6) 30%, var(--bg)); transition-duration: .4s; }
+body.screen.phase-go { background: color-mix(in srgb, var(--go) 78%, var(--bg)); transition-duration: .2s; }
+.phase-tag { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 6vw, 6rem); letter-spacing: .06em; line-height: 1; text-transform: uppercase; }
+.phase-tag:empty { display: none; }
 body.screen .wrap { max-width: none; padding: 2.5vw 3vw; }
 body.screen header { display: none; }
 #screen { display: flex; flex-direction: column; gap: 2.5vw; }
@@ -249,7 +275,7 @@ body.screen header { display: none; }
   <section class="card" id="picker" hidden>
     <h2>Which team are you?</h2>
     <div class="pick" id="pickList"></div>
-    <div class="actions"><button class="ghost" data-role="trainer">I'm the trainer</button></div>
+    <p class="note trainer-entry" id="trainerEntry"></p>
   </section>
 
   <nav class="teams" id="teams" aria-label="Teams"></nav>
@@ -452,6 +478,8 @@ let view = !FIREBASE_CONFIG || params.has("local") ? "local" : "wait";
 const getRole = () => { try { return localStorage.getItem(ROLE_KEY); } catch { return null; } };
 const setRole = r => { try { r ? localStorage.setItem(ROLE_KEY, r) : localStorage.removeItem(ROLE_KEY); } catch {} };
 if (params.get("team")) setRole(params.get("team"));
+// The trainer's own link (Trainer tools > Links) sets this phone to the trainer view, like a team link does.
+if (params.has("trainer")) setRole("trainer");
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 function eventLabel(id) {
   const day = new Date(id.slice(0, 10) + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -615,7 +643,7 @@ function applyRemote(v) {
   setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
   liveClocks = v.clock || {};
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
-  state.teams = ids.map(id => ({ id, name: v.teams[id].name, order: v.teams[id].order, ...(v.teams[id].size ? { size: v.teams[id].size } : {}), counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
+  state.teams = ids.map(id => ({ id, name: v.teams[id].name, order: v.teams[id].order, ...(v.teams[id].size ? { size: v.teams[id].size } : {}), ...(Number.isInteger(v.teams[id].start) ? { start: v.teams[id].start } : {}), counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
   // Taps not yet sent win over what the server has, so the counter never jumps back.
   for (const [k, x] of pending) {
     const [id, r, key] = k.split("/"), t = state.teams.find(t => t.id === id);
@@ -922,7 +950,14 @@ function spreadOrder(N) {
   }
   return pick.flatMap(k => [2 * k, 2 * k + 1]).filter(p => p < N);
 }
-const startOf = i => { const o = spreadOrder(W.stations.length); return o[i % o.length]; };
+// A start the trainer chose (Trainer tools > Start stations) wins. Otherwise a ranked rotation (teams on
+// stations, like Team Output) spreads the teams evenly; a race sim uses the fixed run/station order.
+const startOf = i => {
+  const N = W.stations.length, t = state.teams[i];
+  if (t && Number.isInteger(t.start) && t.start >= 0 && t.start < N) return t.start;
+  if (W.ranked) return Math.floor(i * N / Math.max(1, state.teams.length)) % N;
+  const o = spreadOrder(N); return o[i % o.length];
+};
 // Where team i is now: the slot number, the station, the phase ("wait", "work", "move", "done") and time left.
 function rotAt(i) {
   const N = W.stations.length, r = state.round, started = clockStart(r), el = elapsed(r);
@@ -952,27 +987,29 @@ function rotHtml(i) {
     <div class="nn-row next"><span class="nn-l">Next</span><span>${esc(a.next)}</span></div>`;
 }
 const rotBox = i => `<div class="nownext rot" data-rot="${i}">${rotHtml(i)}</div>`;
-// Swapping two teams' start stations swaps their places in the team order, so no extra data is stored.
-let swapPick = null;
-function swapStarts(a, b) {
-  const A = state.teams[a], B = state.teams[b]; if (!A || !B) return;
-  let oa = A.order ?? a, ob = B.order ?? b;
-  if (oa === ob) { oa = a; ob = b; }
-  if (live) return live.fb.update(path(), { [`teams/${A.id}/order`]: ob, [`teams/${B.id}/order`]: oa });
-  state.teams[a] = B; state.teams[b] = A;
-  if (state.active === a) state.active = b; else if (state.active === b) state.active = a;
+// Moving a team's start: pick the team, then any station. A taken station swaps the two teams; a free one
+// moves the team there. Every team's start is saved then (teams/<id>/start), so the others stay put.
+let movePick = null;
+function moveStart(i, p) {
+  const starts = state.teams.map((_, k) => startOf(k)), from = starts[i];
+  starts.forEach((q, k) => { if (k !== i && q === p) starts[k] = from; });
+  starts[i] = p;
+  if (live) return live.fb.update(path(), Object.fromEntries(state.teams.map((t, k) => [`teams/${t.id}/start`, starts[k]])));
+  state.teams.forEach((t, k) => t.start = starts[k]);
 }
 function renderStarts() {
   const el = $("startsCard");
   el.hidden = screenMode || !W.slot || !(view === "trainer" || view === "local");
   if (el.hidden) return;
-  const k = rotAt(0).k, now = clockStart(state.round) && k < W.stations.length;
+  const k = rotAt(0).k, now = clockStart(state.round) && k < W.stations.length, pick = state.teams[movePick];
+  const who = p => state.teams.map((t, i) => [t, i]).filter(([, i]) => startOf(i) === p);
   el.innerHTML = `<h2>Start stations</h2>
-    <p class="note">Everyone moves one station on every ${fmt(W.slot)}, in the order of the workout. Starts are spread out by themselves; to change one, tap Swap on two people.</p>
-    ${state.teams.map((t, i) => `<div class="link-row" style="${tc(i)}"><span class="dot"></span><span class="n">${esc(t.name)}</span>
-      <span class="note">${esc(W.stations[startOf(i)].name)}${now ? ` · now ${esc(rotAt(i).s.name)}` : ""}</span>
-      <button class="ghost" data-swap="${i}" aria-pressed="${swapPick === i}">${swapPick === null ? "Swap" : swapPick === i ? "Cancel" : "Swap here"}</button></div>`).join("")}
-    ${state.teams.length > W.stations.length ? `<p class="note">More people than stations: some share a start.</p>` : ""}`;
+    <p class="note">Everyone moves one station on every ${fmt(W.slot)}, in the order of the workout. ${pick ? `Now tap the station where <b>${esc(pick.name)}</b> should start. A taken one swaps the two.` : "To change a start, tap Move on a team, then the station."}</p>
+    ${W.stations.map((s, p) => { const here = who(p); return `<div class="link-row start-row${here.length ? "" : " free"}"><span class="n">${esc(s.name)}</span>
+      <span class="start-teams">${here.length ? here.map(([t, i]) => `<span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}${now ? `<span class="note"> · now ${esc(rotAt(i).s.name)}</span>` : ""}</span>
+        ${pick ? "" : `<button class="ghost" data-move="${i}">Move</button>`}`).join("") : `<span class="note">free</span>`}</span>
+      ${pick ? (startOf(movePick) === p ? `<button class="ghost" data-movecancel>Cancel</button>` : `<button class="solid" data-moveto="${p}">${here.length ? "Swap here" : "Start here"}</button>`) : ""}</div>`; }).join("")}
+    ${state.teams.length > W.stations.length ? `<p class="note">More teams than stations: some share a start.</p>` : ""}`;
 }
 // Team phones buzz when it's time to move on and when the next station starts.
 let lastRot = "";
@@ -1101,7 +1138,7 @@ setInterval(() => {
   if (screenMode && W.slot) document.querySelectorAll("[data-slotclock]").forEach(el => { const h = slotClockHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rotstrip]").forEach(el => { const h = rotStripHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rothead]").forEach(el => { const h = esc(rotHead()); if (el.innerHTML !== h) el.innerHTML = h; });
-  rotCue(); timerCue();
+  rotCue(); timerCue(); phaseCue();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
@@ -1166,9 +1203,12 @@ function bests() {
   }
   return bestsMemo = { stamp, pb, rec };
 }
+// PBs, records and team bests are retired for now (Michael, 2026-10-12: teams change from week to week).
+// Set to true to bring them back: tiles, standings, History and the glitter for them all follow it.
+const SHOW_BESTS = false;
 // "Record" when a team beats every earlier result, "PB" when it beats its own earlier best.
 function badge(s, t) {
-  if (!allEvents) return "";
+  if (!allEvents || !SHOW_BESTS) return "";
   const sc = score(s, t); if (!complete(s, sc)) return "";
   const b = bests(), k = skey(W, s), rec = b.rec[k], pb = b.pb[t.id + "|" + k];
   if (rec && cmp(sc.key, rec.key) < 0) return ` <span class="pb rec">Record</span>`;
@@ -1176,7 +1216,7 @@ function badge(s, t) {
   return "";
 }
 function pbLine(s, t) {
-  if (!allEvents) return "";
+  if (!allEvents || !SHOW_BESTS) return "";
   const pb = bests().pb[t.id + "|" + skey(W, s)];
   return pb ? `<div class="st-other">Team best: ${esc(pb.text)} (${esc(shortDate(pb.date))})${badge(s, t)}</div>` : "";
 }
@@ -1193,7 +1233,7 @@ function renderHistory() {
     return `<div class="link-row"><span class="n">${esc(shortDate(ev.id))}${ev.id.length > 10 ? " (extra)" : ""} · ${esc(ev.w.name)}</span><span class="note">${esc(win)}</span></div>`;
   }).join("");
   el.innerHTML = `
-    <h2>History</h2>
+    <h2>History</h2>${SHOW_BESTS ? `
     <h3 class="sub">Records · ${esc(W.name)}</h3>
     ${rec.length ? `<div class="tbl-wrap"><table><thead><tr><th>Station</th><th>Best</th><th>Team</th><th>Date</th></tr></thead><tbody>${rec.map(([s, r]) =>
       `<tr><td>${esc(s.name)}</td><td>${esc(r.text)}</td><td>${esc(r.team)}</td><td>${esc(shortDate(r.date))}</td></tr>`).join("")}</tbody></table></div>`
@@ -1201,10 +1241,10 @@ function renderHistory() {
     ${t ? `<h3 class="sub">${esc(t.name)} · team bests</h3>
     ${pbs.length ? `<div class="tbl-wrap"><table><thead><tr><th>Station</th><th>Best</th><th>Date</th></tr></thead><tbody>${pbs.map(([s, p]) =>
       `<tr><td>${esc(s.name)}</td><td>${esc(p.text)}</td><td>${esc(shortDate(p.date))}</td></tr>`).join("")}</tbody></table></div>`
-      : `<p class="note">No earlier results for this team with this workout.</p>`}` : ""}
+      : `<p class="note">No earlier results for this team with this workout.</p>`}` : ""}` : ""}
     <h3 class="sub">Past sessions · winners</h3>
     ${past || `<p class="note">None yet.</p>`}
-    <p class="note">Bests compare the same workout over earlier sessions. A team keeps its bests when it's renamed; a team that is removed and added again starts fresh.</p>`;
+    ${SHOW_BESTS ? `<p class="note">Bests compare the same workout over earlier sessions. A team keeps its bests when it's renamed; a team that is removed and added again starts fresh.</p>` : ""}`;
 }
 
 // ---- QR codes ----
@@ -1272,6 +1312,50 @@ function slotClock() {
   return { l: paused(state.round) ? "Paused" : "Next switch", v: fmt(Math.ceil(W.slot - (elapsed(state.round) - a0.k * W.slot))) };
 }
 const slotClockHtml = () => { const c = slotClock(); return `<span class="scr-clock-l">${esc(c.l)}</span>${esc(c.v)}`; };
+// Before the clock starts: one lane per team with its station in every block, so everyone sees where they go.
+const showLanes = () => W.slot && state.teams.length && !clockStart(state.round);
+function swimlaneHtml() {
+  const N = W.stations.length;
+  const head = [...Array(N)].map((_, k) => `<div class="lane-h">${fmt(k * W.slot)}</div>`).join("");
+  const rows = state.teams.map((t, i) => `<div class="lane-t"><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span></div>` +
+    [...Array(N)].map((_, k) => { const s = W.stations[(startOf(i) + k) % N];
+      return `<div class="lane-c" style="${tc(i)}">${esc(s.name)}${s.work ? `<small>${Math.ceil((s.time || W.slot) / (s.work + s.switch))} × ${fmt(s.work)}</small>` : ""}</div>`; }).join("")).join("");
+  return `<div class="rot-head">Where you go · ${N} stations, ${fmt(W.slot)} each</div>
+    <div class="lanes" style="grid-template-columns: minmax(8em, auto) repeat(${N}, minmax(0, 1fr))"><div></div>${head}${rows}</div>`;
+}
+// Rest or work for the whole room: rest only when every station rests (in Team Output the Erg rests at other times).
+function screenPhase() {
+  const r = state.round;
+  if (!clockStart(r) || paused(r)) return null;
+  if (W.slot) {
+    const ph = state.teams.map((t, i) => rotAt(i).phase).filter(p => p !== "done" && p !== "wait");
+    return !ph.length ? null : ph.every(p => p === "move" || p === "switch") ? "rest" : "work";
+  }
+  if (W.timer) return timerDone() ? "rest" : "work";
+  return null;
+}
+// Work starting turns the screen a strong colour for 18 seconds, then it fades back to normal.
+// Measured on the shared clock, so Set time or a late screen behave the same as everyone else.
+let lastPhase = null, goArmed = false;
+const GO_SECS = 18;
+function phaseCue() {
+  if (!screenMode) return;
+  const ph = screenPhase();
+  if (ph === "work" && lastPhase !== "work") goArmed = elapsedInWork() < GO_SECS;
+  if (ph !== "work") goArmed = false;
+  lastPhase = ph;
+  const go = goArmed && elapsedInWork() < GO_SECS;
+  document.body.classList.toggle("phase-rest", ph === "rest");
+  document.body.classList.toggle("phase-go", go);
+  document.querySelectorAll("[data-phasetag]").forEach(el => { const h = phaseTag(); if (el.textContent !== h) el.textContent = h; });
+}
+// Seconds since the current work stretch began (so a screen opened late doesn't flash).
+function elapsedInWork() {
+  const el = elapsed(state.round);
+  if (W.slot) { const a = state.teams.length ? rotAt(0) : null; if (!a) return 0; const t = el - a.k * W.slot; return a.part ? t - (a.part - 1) * (a.s.work + a.s.switch) : t; }
+  return el;
+}
+const phaseTag = () => { const ph = screenPhase(); return ph === "rest" ? "Rest" : ph === "work" && goArmed && elapsedInWork() < GO_SECS ? "Go!" : ""; };
 // Each station's own countdown on the big screen (what the phones show), with the team that's there.
 function rotStripHtml() {
   const at = state.teams.map((t, i) => [t, i, rotAt(i)]);
@@ -1305,10 +1389,13 @@ function renderScreen() {
   const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Runde " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
   el.innerHTML = `
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
+      <div class="phase-tag" data-phasetag>${esc(phaseTag())}</div>
       ${W.slot ? `<div class="scr-clock" data-slotclock>${slotClockHtml()}</div>` : timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
     ${W.stations.filter(s => s.type === "emom").map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
-    ${W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
-    ${W.slot && !W.ranked ? `<div class="scr-main"><div class="rot-board" data-rotboard>${rotBoardHtml()}</div>
+    ${showLanes() ? `<div class="scr-main"><div class="rot-board">${swimlaneHtml()}</div>
+      ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : ""}
+    ${showLanes() ? "" : W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
+    ${showLanes() ? "" : W.slot && !W.ranked ? `<div class="scr-main"><div class="rot-board" data-rotboard>${rotBoardHtml()}</div>
       ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
     <div class="scr-main">
       <div class="tbl-wrap"><table class="scr-tbl">
@@ -1686,10 +1773,10 @@ function renderLive() {
   } else if (view === "missing" && !forcedEvent) {
     el.innerHTML = `
       <div class="live-top"><h2>Today's session hasn't started</h2>${conn}</div>
-      <p class="note">This page updates by itself as soon as the trainer starts it. Trainer: pick the workout and start it here. The teams from last time carry over.</p>
-      <div class="actions"><select class="date" id="startPick" aria-label="Workout for today">${workoutOptions(startPick)}</select>
+      <p class="note">This page updates by itself as soon as the trainer starts it.${getRole() === "trainer" ? " Pick the workout and start it here. The teams from last time carry over." : ""}</p>
+      ${getRole() === "trainer" ? `<div class="actions"><select class="date" id="startPick" aria-label="Workout for today">${workoutOptions(startPick)}</select>
         <button class="solid" id="startToday">Start today's session</button>
-        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>
+        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>` : `<p class="note trainer-entry">${trainerEntry()}</p>`}
       ${msg}`;
   } else {
     el.innerHTML = `
@@ -1707,7 +1794,8 @@ function renderLive() {
 const GUIDE = [
   { h: "Joining", team: true, p: [
     "Scan the QR code the trainer shows (or open the link) and pick your team. Your phone remembers it every week.",
-    "Picked the wrong team? Tap **Switch team** at the top." ] },
+    "Picked the wrong team? Tap **Switch team** at the top.",
+    "Want it like an app, without the address bar? Android: browser menu > **Install app** (or Add to Home screen). iPhone: Safari **Share > Add to Home Screen**." ] },
   { h: "Counting", team: true, p: [
     "**Max** stations (cals, reps, meters, lanes): tap the **+** buttons as you go. One phone per team is easiest.",
     "**For time**: tap **Finished** when your team is done; the time comes from the shared clock. Not done at the time cap? Tap **Time cap** and count the reps you did.",
@@ -1718,12 +1806,13 @@ const GUIDE = [
     "Tap **Undo** under the buttons, or tap the big number and type the right one. On timed stations, **Clear result** starts over." ] },
   { h: "Who wins", team: true, p: [
     "Each station ranks the teams (1 is best, ties share a place). The ranks add up to points, and the **lowest points win**. With several rounds, each station counts all rounds together.",
-    "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so.",
-    "**Team best** under a station is your best from earlier sessions of the same workout. Beat it for a **PB**; beat every team for a **Record**." ] },
+    "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so." ] },
   { h: "Starting a session", p: [
+    "Your own trainer link (**Trainer tools > Links > Send trainer link**, ends in ?trainer) opens the trainer view straight away; bookmark it or add it to the home screen. Without it, the small **Trainer?** link under the teams asks before switching.",
     "On the trainer phone, pick today's workout and tap **Start today's session**. Each day gets its own session; teams and their names carry over from last time.",
     "Tap **Show QR codes**: the Everyone code lets each phone pick its team, a team's code sets the team directly. Teams that can't scan: send a link from **Trainer tools > Links**.",
-    "**Open big screen** on a TV or laptop for live standings, the clock, Now / Next and a QR code to join. It has no buttons, so it can't be changed by accident." ] },
+    "**Open big screen** on a TV or laptop for live standings, the clock, Now / Next and a QR code to join. It has no buttons, so it can't be changed by accident.",
+    "In rotations (Team Output blocks, race sim) the big screen shows **where each team goes** before the clock starts, takes on its **rest colour** while everyone rests, and flashes a strong colour with **Go!** when work starts, fading back to normal." ] },
   { h: "The clock", p: [
     "Timed workouts (for time, AMRAP, EMOM) have a shared clock. **Start clock** on the trainer phone; every phone and the big screen follow it.",
     "**Pause** stops the clock and the EMOM minutes (for a break); **Resume** carries on. **Set time** jumps to an exact time like 6:30, for example after a false start; EMOM ticks for minutes not reached yet are cleared. **Reset** starts over (it asks first).",
@@ -1736,10 +1825,10 @@ const GUIDE = [
     "Switching a session to another workout clears its scores (it asks first). **Copy** puts a workout on the clipboard so a chatbot can change it; pasting it back with the same id replaces it. Every session keeps its own copy of its workout." ] },
   { h: "Sessions and history", p: [
     "**Trainer tools > Sessions**: switch everyone to another of today's sessions, open a past one, or add a past date to type in results from paper. **Delete this session** is there too. A second class on the same day: **Trainer tools > Links > Start extra session**.",
-    "**Trainer tools > History**: records and team bests for the workout on screen, and past winners. Bests only compare sessions of the same workout." ] },
+    "**Trainer tools > History**: the winners of past sessions." ] },
   { h: "Race simulation", p: [
     "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
-    "Starts are spread out by themselves, half on runs and half on stations. To change one, **Trainer tools > Start stations**: tap **Swap** on two people.",
+    "Starts are spread out by themselves (in a race sim half on runs and half on stations). To change one, **Trainer tools > Start stations**: tap **Move** on a team, then the station. A free station moves it there, a taken one swaps the two.",
     "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and buzzes at each switch. The big screen shows who's where and when the next switch is. There's no ranking.",
     "Team Output works the same way with **ranked** on: every team moves on every 6:00, each round is a whole rotation, and the big screen keeps the standings, with a big countdown to the next switch and each station's own timer (the same as on the phones). A station with **work** and **switch** (the Erg) shows its own parts: **part 2 of 3**, then **Switch** to the next machine." ] },
   { h: "Teams", p: [
@@ -1768,6 +1857,8 @@ function renderLinks() {
       <button class="ghost" data-share="${t.id}" data-label="Send link">Send link</button></div>`).join("")}
     <div class="actions"><button class="ghost" data-share="" data-label="Send link for everyone">Send link for everyone</button>
       <button class="ghost" id="screenShare" data-label="Send big-screen link">Send big-screen link</button></div>
+    <p class="note">Your own trainer link opens this view straight away. Keep it to yourself, bookmark it or add it to the home screen.</p>
+    <div class="actions"><button class="ghost" id="trainerShare" data-label="Send trainer link">Send trainer link</button></div>
     <h3 class="sub">This phone</h3>
     <div class="actions"><button class="ghost" id="startExtra">Start extra session</button>
       <button class="ghost" data-role="">Switch role</button></div>`;
@@ -1799,7 +1890,13 @@ function renderSessions() {
 function renderPicker() {
   $("pickList").innerHTML = state.teams.map((t, i) =>
     `<button style="${tc(i)}" data-role="${t.id}"><span class="dot"></span>${esc(t.name)}</button>`).join("");
+  $("trainerEntry").innerHTML = trainerEntry();
 }
+// Small and with a confirm, so athletes don't become the trainer by accident. Trainers use their own link.
+let trainerAsk = false;
+const trainerEntry = () => trainerAsk
+  ? `Switch this phone to the trainer view? <button class="ghost" data-role="trainer">Yes, I'm the trainer</button> <button class="ghost" id="trainerNo">Cancel</button>`
+  : `<button class="linkish" id="trainerAsk">Trainer?</button>`;
 
 function renderSections() {
   if (screenMode) {
@@ -1838,23 +1935,24 @@ document.addEventListener("click", e => {
   else if (b.dataset.edit) { editing = b.dataset.edit; renderBoard(); return; }
   else if (b.dataset.remove) { removeTeam(+b.dataset.remove); renderSetup(); }
   else if (b.dataset.role !== undefined) {
-    setRole(b.dataset.role); editing = null;
+    setRole(b.dataset.role); editing = null; trainerAsk = false;
     const i = state.teams.findIndex(t => t.id === b.dataset.role);
-    view = b.dataset.role === "trainer" ? "trainer" : i >= 0 ? "team" : "pick";
+    if (view !== "missing") view = b.dataset.role === "trainer" ? "trainer" : i >= 0 ? "team" : "pick";
     if (i >= 0) state.active = i;
     window.scrollTo(0, 0); renderSetup();
   }
   else if (b.dataset.share !== undefined) {
     return share(baseUrl() + (b.dataset.share ? "?team=" + b.dataset.share : ""), b);
   }
-  else if (b.dataset.swap !== undefined) {
-    const i = +b.dataset.swap;
-    if (swapPick === null) swapPick = i; else { if (swapPick !== i) swapStarts(swapPick, i); swapPick = null; }
-  }
+  else if (b.dataset.move !== undefined) movePick = +b.dataset.move;
+  else if (b.dataset.movecancel !== undefined) movePick = null;
+  else if (b.dataset.moveto !== undefined) { if (movePick !== null && state.teams[movePick]) moveStart(movePick, +b.dataset.moveto); movePick = null; }
   else if (b.dataset.qr !== undefined) { qrFor = b.dataset.qr; return renderQrCard(); }
   else if (b.id === "qrOpen") { qrFor = ""; renderQrCard(); $("qrCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   else if (b.id === "qrClose") { qrFor = null; return renderQrCard(); }
   else if (b.id === "screenShare") return share(baseUrl() + "?screen", b);
+  else if (b.id === "trainerShare") return share(baseUrl() + "?trainer", b);
+  else if (b.id === "trainerAsk" || b.id === "trainerNo") { trainerAsk = b.id === "trainerAsk"; }
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
   else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
   else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
