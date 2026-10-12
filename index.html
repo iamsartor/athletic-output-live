@@ -232,6 +232,10 @@ body.screen.phase-go { background: color-mix(in srgb, var(--go) 78%, var(--bg));
 .phase-tag:empty { display: none; }
 body.screen .wrap { max-width: none; padding: 2.5vw 3vw; }
 body.screen header { display: none; }
+#scrBack { display: none; }
+body.screen #scrBack { display: grid; place-items: center; position: fixed; top: .6rem; left: .6rem; z-index: 5; width: 2.6rem; height: 2.6rem;
+  border-radius: 50%; color: var(--fg); text-decoration: none; font-size: 1.4rem; opacity: .3; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 #screen { display: flex; flex-direction: column; gap: 2.5vw; }
 .scr-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 2vw; flex-wrap: wrap; }
 .scr-title { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 5vw, 5.5rem); text-transform: uppercase; line-height: .9; }
@@ -262,6 +266,7 @@ body.screen header { display: none; }
 
 <div class="wrap">
   <section id="screen" hidden></section>
+  <a id="scrBack" href="./" aria-label="Back" title="Back">&larr;</a>
 
   <header>
     <h1 id="title">Team Output<small id="subtitle"></small></h1>
@@ -1375,6 +1380,12 @@ function rotBoardHtml() {
     return `<div class="rot-cell${here.length ? " busy" : ""}${moving ? " moving" : ""}"><b>${esc(s.name)}</b>${here.map(([t, i]) =>
       `<span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>`).join("")}${moving ? `<i>move on</i>` : ""}</div>`; }).join("")}</div>`;
 }
+// The small arrow on the big screen goes back to where it was opened from, or to the normal view
+// (a new tab or an installed app has no back button).
+$("scrBack").addEventListener("click", e => {
+  let same = false; try { same = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch {}
+  if (same && history.length > 1) { e.preventDefault(); history.back(); }
+});
 function renderScreen() {
   const el = $("screen");
   document.body.classList.toggle("screen", screenMode);
