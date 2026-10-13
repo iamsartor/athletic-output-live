@@ -900,10 +900,10 @@ const STATION = {
         ${bigVal(s.id + "_t", "–:–", label, true, "")}
         <div class="btns two"><button class="plus" data-act="fin:${s.id}" ${running ? "" : "disabled"}>Finished</button>${s.cap ? `<button data-act="cap:${s.id}">Time cap</button>` : ""}</div>
         ${running ? "" : `<div class="st-info center">Finished stops the clock for this team once it runs. Or tap the time to type it.</div>`}`;
-    return `<div class="st wide">${top(s.name, (s.target ? `${s.target} ${s.unit} for time` : "for time") + (s.cap ? " · cap " + fmt(s.cap) : ""))}${info(s)}${body}${totalLine(s, t)}</div>`;
+    return `<div class="st wide">${top(s.name, (s.target ? `${s.target} ${s.unit} for time` : "for time") + (s.cap ? " · cap " + fmt(s.cap) : ""))}${info(s)}${hasNowNext(s) && todaysSession() ? nowNextBox(s) : ""}${body}${totalLine(s, t)}</div>`;
   },
   amrap: (s, t, r) => `
-    <div class="st wide">${top(s.name, "rounds + reps" + (s.cap ? " · " + fmt(s.cap) : ""))}${info(s)}
+    <div class="st wide">${top(s.name, "rounds + reps" + (s.cap ? " · " + fmt(s.cap) : ""))}${info(s)}${hasNowNext(s) && todaysSession() ? nowNextBox(s) : ""}
       <div class="pair">
         <div><div class="st-unit center">Rounds</div>${bigVal(s.id + "_n", val(t, r, s.id + "_n"), `${s.name} rounds`)}
           <div class="btns one"><button class="plus" data-k="${s.id}_n" data-d="1">+1 round</button></div>
@@ -929,7 +929,7 @@ const STATION = {
         : live && eventId && !eventId.startsWith(today()) ? "Tap a minute once for done, again for missed, a third time to clear."
         : view === "local" ? "Ticks start when you start the clock." : "Ticks start when the trainer starts the clock."}</div>`
       : `<div class="min-panel">${top(`Minute ${sel} · ${move(sel)}`, "reps")}${bigVal(key, val(t, r, key), `Minute ${sel} reps`)}${stepBtns(key, s.steps)}</div>`;
-    const today_ = !(live && eventId && !eventId.startsWith(today()));
+    const today_ = todaysSession();
     return `<div class="st wide">${top(s.name, `${s.minutes} min · ${done ? "minutes done" : "reps"}${s.scored ? "" : " · not ranked"}`)}${info(s)}
       ${today_ ? nowNextBox(s) : ""}
       <div class="mins">${cells}</div>${panel}
@@ -1045,8 +1045,19 @@ function timerCue() {
 }
 
 // Now / Next for an EMOM: this minute's move with the time left, and the next move (or the next part).
+// For a time or AMRAP part of a workout with several parts: the part with its time left (or the time so far
+// without a cap), and the part that comes next.
 function nowNext(s) {
   const r = state.round, el = elapsed(r), started = clockStart(r);
+  if (s.type === "time" || s.type === "amrap") {
+    const part = W.stations[W.stations.indexOf(s) + 1], next = part ? part.name : "done";
+    if (started && s.cap && el >= s.cap) return { now: `${s.name} · time's up`, left: "", next: part ? part.name : "" };
+    return {
+      now: s.info ? `${s.name} · ${s.info}` : s.name,
+      left: !started ? "waiting for the clock" : paused(r) ? "paused" : s.cap ? `${fmt(Math.ceil(s.cap - el))} left` : `${fmt(el)} so far`,
+      next,
+    };
+  }
   const m = started ? Math.min(s.minutes, Math.floor(el / 60) + 1) : 1, move = k => s.moves[(k - 1) % s.moves.length];
   if (started && el >= s.minutes * 60) {
     const part = W.stations[W.stations.indexOf(s) + 1];
@@ -1061,6 +1072,9 @@ function nowNext(s) {
 }
 const nowNextHtml = s => { const n = nowNext(s); return `<div class="nn-row"><span class="nn-l">Now</span><b>${esc(n.now)}</b>${n.left ? `<span class="nn-t">${esc(n.left)}</span>` : ""}</div>${n.next ? `<div class="nn-row next"><span class="nn-l">Next</span><span>${esc(n.next)}</span></div>` : ""}`; };
 const nowNextBox = s => `<div class="nownext" data-nn="${s.id}">${nowNextHtml(s)}</div>`;
+// EMOMs always get Now / Next; time and AMRAP parts only when the workout has more than one part.
+const hasNowNext = s => s.type === "emom" || ((s.type === "time" || s.type === "amrap") && W.stations.length > 1 && !W.slot);
+const todaysSession = () => !(live && eventId && !eventId.startsWith(today()));
 
 function clockBar() {
   if (!timed() || (live && eventId && !eventId.startsWith(today()))) return "";
@@ -1404,7 +1418,7 @@ function renderScreen() {
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
       <div class="phase-tag" data-phasetag>${esc(phaseTag())}</div>
       ${W.slot ? `<div class="scr-clock" data-slotclock>${slotClockHtml()}</div>` : timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
-    ${W.stations.filter(s => s.type === "emom").map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
+    ${W.stations.filter(hasNowNext).map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
     ${showLanes() ? `<div class="scr-main"><div class="rot-board">${swimlaneHtml()}</div>
       ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : ""}
     ${showLanes() ? "" : W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
