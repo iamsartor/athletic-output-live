@@ -104,6 +104,8 @@ th { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color:
 td .rk { display: block; font-size: .7rem; color: var(--muted); }
 td.pts { font-family: var(--display); font-weight: 800; font-size: 1.2rem; }
 tr.lead td.pts { color: var(--accent); }
+#standings th:first-child, #standings td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface); max-width: 9.5em; overflow: hidden; text-overflow: ellipsis; }
+#standings td.pts { text-align: center; }
 .tname { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
 .tname .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc); }
 .note { font-size: .8rem; color: var(--muted); margin: 0; line-height: 1.45; }
@@ -1177,17 +1179,24 @@ const HOW = {
   amrap: () => "most rounds plus reps wins",
   emom: s => s.measure === "done" ? "most minutes done wins" : "most reps over all minutes wins",
 };
-// Ranks every team on each station, then adds the ranks up to points (lowest wins). place shares ties.
+// Ranks every team on each station, then adds the ranks up to points (lowest wins). Tied teams share a rank.
+// A station nobody has a result on yet gives no ranks (instead of #1 for everyone) and no points.
 function ranksOf(s, teams, w = W) {
-  const keys = teams.map(t => score(s, t, w).key);
+  const keys = teams.map(t => score(s, t, w).key), none = score(s, { counts: [] }, w).key;
+  if (keys.every(k => !cmp(k, none))) return keys.map(() => null);
   return keys.map(k => 1 + keys.filter(o => cmp(o, k) < 0).length);
 }
+// Equal points: the team with more first places goes ahead, then more second places, and so on.
+// Teams still equal share the place.
 function table(w, teams) {
   const rs = w.stations.filter(s => ranked(s, w)), rk = Object.fromEntries(rs.map(s => [s.id, ranksOf(s, teams, w)]));
-  const rows = teams.map((t, i) => ({ t, i, pts: rs.reduce((a, s) => a + rk[s.id][i], 0) })).sort((a, b) => a.pts - b.pts);
-  rows.forEach(r => r.place = 1 + rows.filter(o => o.pts < r.pts).length);
+  const rows = teams.map((t, i) => ({ t, i, pts: rs.reduce((a, s) => a + (rk[s.id][i] || 0), 0), tb: rs.map(s => rk[s.id][i]).filter(Boolean).sort((a, b) => a - b) }));
+  const better = (a, b) => a.pts !== b.pts ? a.pts < b.pts : cmp(a.tb, b.tb) < 0;
+  rows.sort((a, b) => better(a, b) ? -1 : better(b, a) ? 1 : 0);
+  rows.forEach(r => r.place = 1 + rows.filter(o => better(o, r)).length);
   return { rk, rows, n: rs.length };
 }
+const ordinal = n => n + (n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th");
 const unitOf = s => s.type === "count" ? s.unit : s.type === "emom" ? (s.measure === "done" ? "minutes" : "reps") : TYPES[s.type];
 
 // ---- History and personal bests ----
@@ -1430,8 +1439,8 @@ function renderScreen() {
         <tbody>${rows.map(({ t, i, pts, place }) => `
           <tr class="${any && place === 1 ? "lead" : ""}"><td class="place">${any ? place : ""}</td>
             <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
-            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
-            ${n > 1 ? `<td class="pts">${pts}</td>` : ""}</tr>`).join("")}</tbody>
+            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
+            ${n > 1 ? `<td class="pts">${any ? pts : "–"}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
       ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
     </div>`}`;
@@ -1506,14 +1515,14 @@ function renderStandings() {
   if (!state.teams.length) { $("standings").innerHTML = ""; return; }
   const { rk, rows, n } = table(W, state.teams), one = n === 1, pa = perAthleteOn();
   const any = anyScores();
-  const best = rows[0].pts;
+  // Points come right after the team, so they show on a phone without scrolling sideways.
   $("standings").innerHTML = `
-    <thead><tr><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n ? `<th>${one ? "Rank" : "Points"}</th>` : ""}</tr></thead>
-    <tbody>${rows.map(({ t, i, pts }) => `
-      <tr class="${n && any && pts === best ? "lead" : ""}">
+    <thead><tr><th>Team</th>${n ? `<th>${one ? "Rank" : "Points"}</th>` : ""}${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(({ t, i, pts, place }) => `
+      <tr class="${n && any && place === 1 ? "lead" : ""}">
         <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
-        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
-        ${n ? `<td class="pts">${pts}</td>` : ""}
+        ${n ? `<td class="pts">${!any ? "–" : one ? place : pts}${any && !one ? `<span class="rk">${ordinal(place)}</span>` : ""}</td>` : ""}
+        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id]?.[i] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
       </tr>`).join("")}</tbody>`;
   const over = W.rounds > 1 ? " over all rounds" : "";
   const free = W.stations.filter(s => !ranked(s));
@@ -1523,7 +1532,7 @@ function renderStandings() {
     : one && !free.length
     ? `Teams are ranked by their result${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
     : one ? `Teams are ranked by ${ranks1.name}${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
-    : `Each column is the team's result${over}, with its rank below. Points add up the ranks across the ${n} ranked stations, so the lowest score wins. Tied teams share a rank.`) + (n ? freeNote : "")
+    : `Each column is the team's result${over}, with its rank below. Points add up the ranks across the ${n} ranked stations, so the lowest score wins. Equal points: more first places wins, then more second places.`) + (n ? freeNote : "")
     + (pa ? " \"each\" is the total divided by the team's athletes (set under Teams); the ranking uses the totals." : "");
   celebrate();
 }
