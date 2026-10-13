@@ -848,7 +848,7 @@ function renderHeader() {
 
 function renderRound() {
   const seg = $("roundSeg");
-  if (seg.children.length !== W.rounds) seg.innerHTML = roundList().map(r => `<button data-round="${r}">Runde ${r + 1}</button>`).join("");
+  if (seg.children.length !== W.rounds) seg.innerHTML = roundList().map(r => `<button data-round="${r}">Round ${r + 1}</button>`).join("");
   [...seg.children].forEach((b, r) => b.setAttribute("aria-pressed", state.round === r));
 }
 
@@ -876,7 +876,7 @@ const STATION = {
     <div class="st">${top(s.name, s.unit)}${info(s)}
       ${bigVal(s.id, val(t, r, s.id), `${s.name} ${s.unit}`)}
       ${stepBtns(s.id, s.steps)}
-      ${W.rounds > 1 ? `<div class="st-other">${roundList().filter(x => x !== r).map(x => `Runde ${x + 1}: ${val(t, x, s.id)}`).join(" · ")} · Total ${esc(score(s, t).text)}</div>` : ""}
+      ${W.rounds > 1 ? `<div class="st-other">${roundList().filter(x => x !== r).map(x => `Round ${x + 1}: ${val(t, x, s.id)}`).join(" · ")} · Total ${esc(score(s, t).text)}</div>` : ""}
     </div>`,
   time: (s, t, r) => {
     const T = val(t, r, s.id + "_t"), capped = val(t, r, s.id + "_c"), running = clockStart(r);
@@ -1097,7 +1097,7 @@ function renderBoard() {
   if (!t) { board.innerHTML = ""; return; }
   board.setAttribute("style", tc(i));
   board.innerHTML = `
-    <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">${W.rounds > 1 ? "Runde " + (r + 1) : ""}</span></div>
+    <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">${W.rounds > 1 ? "Round " + (r + 1) : ""}</span></div>
     ${clockBar()}
     ${W.slot ? rotBox(i) : ""}
     <div class="grid">${boardOrder(i).map(s => { const h = STATION[s.type](s, t, r).replace(/<\/div>\s*$/, pbLine(s, t) + "</div>");
@@ -1413,7 +1413,7 @@ function renderScreen() {
     return;
   }
   const { rk, rows, n } = table(W, state.teams), one = n === 1, any = anyScores() && n > 0, pa = perAthleteOn();
-  const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Runde " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
+  const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Round " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
   el.innerHTML = `
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
       <div class="phase-tag" data-phasetag>${esc(phaseTag())}</div>
