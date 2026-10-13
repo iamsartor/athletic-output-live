@@ -594,7 +594,7 @@ function setClock(secs) {
   for (const s of W.stations) if (s.type === "emom") for (const t of state.teams) for (let m = upto + 1; m <= s.minutes; m++) {
     const key = `${s.id}_m${m}`, x = val(t, r, key);
     // The minute in progress keeps a miss a team already tapped; only a tick can't be right yet.
-    if (x && (m > upto + 1 || x === 1)) { clear[`counts/${t.id}/r${r}/${key}`] = null; delete t.counts[r][key]; pending.delete(`${t.id}/r${r}/${key}`); }
+    if (x && (m > upto + 1 || x === 1)) { clear[`counts/${t.id}/r${r}/${key}`] = null; delete t.counts[r][key]; dropPending(`${t.id}/r${r}/${key}`); }
   }
   if (live && Object.keys(clear).length) live.fb.update(path(), clear);
   writeClock(r, clockStart(r) > 0 ? now() - ms : -ms);
@@ -635,7 +635,7 @@ function followToday() {
 
 function openEvent(id) {
   if (id === eventId) return;
-  flush(); pending.clear(); editing = null;
+  flush(); dropPending(); editing = null;
   if (stopEvent) stopEvent();
   eventId = id; view = "wait"; renderAll();
   stopEvent = live.fb.onValue(path(), snap => applyRemote(snap.val()),
@@ -656,6 +656,10 @@ function applyRemote(v) {
     const [id, r, key] = k.split("/"), t = state.teams.find(t => t.id === id);
     if (t && t.counts[+r.slice(1)]) t.counts[+r.slice(1)][key] = x;
   }
+  for (const [k, d] of adds) {
+    const [id, r, key] = k.split("/"), t = state.teams.find(t => t.id === id), c = t?.counts[+r.slice(1)];
+    if (c) c[key] = Math.max(0, (c[key] || 0) + d);
+  }
   const role = getRole(), mine = ids.indexOf(role);
   if (screenMode) {
     view = "screen";
@@ -673,23 +677,40 @@ function applyRemote(v) {
   save();
 }
 
-// Live counts are sent as totals about a second after the last tap: ten quick taps become one write,
-// and a lost write can't make scores drift because the next one carries the full total.
-const pending = new Map();
+// Live counts are sent about a second after the last tap, so ten quick taps become one write.
+// "+" taps and Undo are sent as additions (adds), so two phones counting the same team both count.
+// Typing a number or clearing a result sends the total (pending) and wins over earlier taps.
+const pending = new Map(), adds = new Map();
 let flushTimer = null;
+const later = () => { clearTimeout(flushTimer); flushTimer = setTimeout(flush, 1000); };
 function queue(i, key, v) {
-  const t = state.teams[i];
+  const t = state.teams[i], k = `${t.id}/r${state.round}/${key}`;
   t.counts[state.round][key] = v;
-  pending.set(`${t.id}/r${state.round}/${key}`, v);
-  clearTimeout(flushTimer); flushTimer = setTimeout(flush, 1000);
+  pending.set(k, v); adds.delete(k); later();
+}
+function queueAdd(i, key, d) {
+  const t = state.teams[i], k = `${t.id}/r${state.round}/${key}`, v = (t.counts[state.round][key] || 0) + d;
+  t.counts[state.round][key] = v;
+  if (pending.has(k)) pending.set(k, v); else adds.set(k, (adds.get(k) || 0) + d);
+  later();
+}
+function dropPending(prefix) {
+  for (const m of [pending, adds]) for (const k of [...m.keys()]) if (!prefix || k.startsWith(prefix)) m.delete(k);
 }
 function flush() {
   clearTimeout(flushTimer);
-  if (!live || !pending.size) return;
-  const sent = new Map(pending);
-  live.fb.update(path(), Object.fromEntries([...sent].map(([k, v]) => ["counts/" + k, v])))
-    .then(() => { for (const [k, v] of sent) if (pending.get(k) === v) pending.delete(k); })
-    .catch(() => { flushTimer = setTimeout(flush, 3000); });
+  if (!live) return;
+  if (pending.size) {
+    const sent = new Map(pending);
+    live.fb.update(path(), Object.fromEntries([...sent].map(([k, v]) => ["counts/" + k, v])))
+      .then(() => { for (const [k, v] of sent) if (pending.get(k) === v) pending.delete(k); })
+      .catch(() => { flushTimer = setTimeout(flush, 3000); });
+  }
+  const sent = [...adds].filter(([, d]) => d);
+  adds.clear();
+  // Each addition is its own write: one the server refuses (it would go below 0) can't block the others.
+  // A refused one is dropped and the phone shows the server's number again.
+  for (const [k, d] of sent) live.fb.update(path(), { ["counts/" + k]: live.fb.increment(d) }).catch(() => {});
 }
 // Send right away when the phone is locked or the tab is closed.
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
@@ -700,6 +721,14 @@ function setValue(i, key, v) {
   v = Math.max(0, Math.min(100000, Math.round(v) || 0));
   if (live) return queue(i, key, v);
   state.teams[i].counts[state.round][key] = v;
+}
+// A tap adds to the count (or takes away, never below 0), so taps from two phones add up.
+function addValue(i, key, d) {
+  const cur = val(state.teams[i], state.round, key);
+  d = Math.max(-cur, Math.min(100000 - cur, Math.round(d) || 0));
+  if (!d) return;
+  if (live) return queueAdd(i, key, d);
+  state.teams[i].counts[state.round][key] = cur + d;
 }
 function bump(i, key, d) {
   const get = k => val(state.teams[i], state.round, k), s = stationOf(key);
@@ -712,12 +741,12 @@ function bump(i, key, d) {
   }
   if (s && s.type === "time" && s.target && key === s.id + "_r" && d > 0) {
     // Reaching the team goal takes the time, when the clock runs.
-    const v = get(key) + d;
-    setValue(i, key, v);
+    addValue(i, key, d);
+    const v = get(key);
     if (v >= s.target && !get(s.id + "_t") && !get(s.id + "_c") && clockStart(state.round)) stationAction(i, "fin", s.id);
     return;
   }
-  setValue(i, key, get(key) + d);
+  addValue(i, key, d);
 }
 // Time stations: finish on the clock, hit the time cap, or clear.
 function stationAction(i, act, sid) {
@@ -750,18 +779,18 @@ function addTeam() {
   state.teams.push(newTeam(state.teams.length + 1)); state.active = state.teams.length - 1;
 }
 function removeTeam(i) {
-  if (live) { const id = state.teams[i].id; for (const k of [...pending.keys()]) if (k.startsWith(id + "/")) pending.delete(k); return live.fb.update(path(), { ["teams/" + id]: null, ["counts/" + id]: null }); }
+  if (live) { const id = state.teams[i].id; dropPending(id + "/"); return live.fb.update(path(), { ["teams/" + id]: null, ["counts/" + id]: null }); }
   state.teams.splice(i, 1); state.active = Math.min(state.active, state.teams.length - 1);
 }
 function resetAll() {
   state.round = 0;
-  if (live) { pending.clear(); clearTimeout(flushTimer); return live.fb.update(path(), { counts: null, clock: null }); }
+  if (live) { dropPending(); clearTimeout(flushTimer); return live.fb.update(path(), { counts: null, clock: null }); }
   state.teams.forEach(t => t.counts = blankCounts()); state.clocks = {};
 }
 // Switches the session (or this phone) to another workout. Scores and clocks start over.
 function useWorkout(w) {
   editing = null;
-  if (live) { pending.clear(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: JSON.stringify(w), counts: null, clock: null }); }
+  if (live) { dropPending(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: JSON.stringify(w), counts: null, clock: null }); }
   setWorkout(w); state.teams.forEach(t => t.counts = blankCounts()); state.clocks = {};
 }
 
@@ -806,7 +835,7 @@ async function addPastSession(date, btn) {
 
 // Deletes the session on screen with all its scores. Phones on it fall back to today's session.
 async function deleteSession() {
-  const id = eventId; pending.clear(); clearTimeout(flushTimer);
+  const id = eventId; dropPending(); clearTimeout(flushTimer);
   await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: null, ...(latest === id ? { current: null } : {}) });
   sessionList = null; loadSessions();
   if (forcedEvent) location.href = baseUrl(); else { latest = latest === id ? null : latest; eventId = null; followToday(); }
