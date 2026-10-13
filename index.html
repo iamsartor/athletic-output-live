@@ -1063,6 +1063,17 @@ function rotCue() {
   document.querySelectorAll("[data-rot]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
 }
 
+// Test buzz: the tap also unlocks vibration on Android, which ignores it until the page has been tapped once.
+// Chrome on Android stays still while the phone is on Silent, and iPhones can't vibrate from a web page at all.
+let buzzMsg = "";
+function buzzTest() {
+  let ok = false;
+  try { ok = !!(navigator.vibrate && navigator.vibrate([300, 150, 300])); } catch {}
+  buzzMsg = ok ? "Buzzing now. Felt nothing? Take the phone off <b>Silent</b> (Vibrate is fine) and check Settings &gt; Sound &amp; vibration &gt; <b>Vibration &amp; haptics</b>. The station tiles also flash at every switch."
+    : "This phone's browser can't vibrate (iPhones never do). Watch for the flash on the station tiles at every switch.";
+  renderLive();
+}
+
 // Every phone buzzes when a countdown timer runs out; the trainer's buttons change to Start again.
 let lastDone = false;
 function timerCue() {
@@ -1823,6 +1834,7 @@ function renderLive() {
     el.innerHTML = FIREBASE_CONFIG ? `
       <div class="live-top"><h2>Team phones</h2><a class="solid" href="${baseUrl()}">Back to live scoring</a></div>
       <p class="note">This phone is counting on its own. Nothing here is shared.</p>` : "";
+    if (W.slot || W.timer) el.innerHTML += `<div class="actions"><button class="ghost" id="buzzTest">Test buzz</button></div>${buzzMsg ? `<p class="note" role="status">${buzzMsg}</p>` : ""}`;
   } else if (view === "trainer" && !eventId.startsWith(today())) {
     el.innerHTML = `
       <div class="live-top">${label} ${eventId.slice(0, 4)}${conn}</div>
@@ -1839,7 +1851,8 @@ function renderLive() {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
       <div class="live-top"><span>Scoring for <b>${esc(state.teams[state.active].name)}</b></span>${conn}</div>
-      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>${msg}`;
+      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button><button class="ghost" id="buzzTest">Test buzz</button></div>
+      ${buzzMsg ? `<p class="note" role="status">${buzzMsg}</p>` : ""}${msg}`;
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
   } else if (view === "wait") {
@@ -1869,6 +1882,7 @@ const GUIDE = [
   { h: "Joining", team: true, p: [
     "Scan the QR code the trainer shows (or open the link) and pick your team. Your phone remembers it every week.",
     "Picked the wrong team? Tap **Switch team** at the top.",
+    "The phone buzzes at every station switch. Tap **Test buzz** at the top once before the start: Android phones on **Silent** don't buzz, and iPhones never do, so watch for the flash on the station tiles instead.",
     "Want it like an app, without the address bar? Android: browser menu > **Install app** (or Add to Home screen). iPhone: Safari **Share > Add to Home Screen**." ] },
   { h: "Counting", team: true, p: [
     "**Max** stations (cals, reps, meters, lanes): tap the **+** buttons as you go. One phone per team is easiest.",
@@ -2022,6 +2036,7 @@ document.addEventListener("click", e => {
   else if (b.dataset.movecancel !== undefined) movePick = null;
   else if (b.dataset.moveto !== undefined) { if (movePick !== null && state.teams[movePick]) moveStart(movePick, +b.dataset.moveto); movePick = null; }
   else if (b.dataset.qr !== undefined) { qrFor = b.dataset.qr; return renderQrCard(); }
+  else if (b.id === "buzzTest") { buzzTest(); return; }
   else if (b.id === "qrOpen") { qrFor = ""; renderQrCard(); $("qrCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   else if (b.id === "qrClose") { qrFor = null; return renderQrCard(); }
   else if (b.id === "screenShare") return share(baseUrl() + "?screen", b);
