@@ -1049,7 +1049,7 @@ function renderStarts() {
       ${pick ? (startOf(movePick) === p ? `<button class="ghost" data-movecancel>Cancel</button>` : `<button class="solid" data-moveto="${p}">${here.length ? "Swap here" : "Start here"}</button>`) : ""}</div>`; }).join("")}
     ${state.teams.length > W.stations.length ? `<p class="note">More teams than stations: some share a start.</p>` : ""}`;
 }
-// Team phones buzz when it's time to move on and when the next station starts.
+// Team phones flash the station tiles when it's time to move on and when the next station starts.
 let lastRot = "";
 function rotCue() {
   if (!W.slot || screenMode || !state.teams[state.active]) return;
@@ -1059,22 +1059,10 @@ function rotCue() {
   // A new station: the tiles move round so the current one comes first.
   if (was.split("|")[1] !== String(a.k) && !editing) renderBoard();
   if (!clockStart(state.round) || paused(state.round) || !(view === "team" || view === "local")) return;
-  try { navigator.vibrate && navigator.vibrate(a.phase === "move" || a.phase === "switch" ? [300, 150, 300] : [600]); } catch {}
   document.querySelectorAll("[data-rot]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
 }
 
-// Test buzz: the tap also unlocks vibration on Android, which ignores it until the page has been tapped once.
-// Chrome on Android stays still while the phone is on Silent, and iPhones can't vibrate from a web page at all.
-let buzzMsg = "";
-function buzzTest() {
-  let ok = false;
-  try { ok = !!(navigator.vibrate && navigator.vibrate([300, 150, 300])); } catch {}
-  buzzMsg = ok ? "Buzzing now. Felt nothing? Take the phone off <b>Silent</b> (Vibrate is fine) and check Settings &gt; Sound &amp; vibration &gt; <b>Vibration &amp; haptics</b>. The station tiles also flash at every switch."
-    : "This phone's browser can't vibrate (iPhones never do). Watch for the flash on the station tiles at every switch.";
-  renderLive();
-}
-
-// Every phone buzzes when a countdown timer runs out; the trainer's buttons change to Start again.
+// Every phone flashes the clock when a countdown timer runs out; the trainer's buttons change to Start again.
 let lastDone = false;
 function timerCue() {
   const done = timerDone(), was = lastDone;
@@ -1082,7 +1070,6 @@ function timerCue() {
   if (done === was) return;
   if (canRunClock() && !editing) renderBoard();
   if (!done) return;
-  try { !screenMode && navigator.vibrate && navigator.vibrate([600, 200, 600]); } catch {}
   document.querySelectorAll("[data-clock]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
 }
 
@@ -1647,7 +1634,7 @@ TYPES
 TIMER
 TIMES: every time in the workout (cap, timer, slot, time, work, switch) is written "m:ss" as a string in quotes: "0:30" is 30 seconds, "1:30" is 90 seconds, "6:00" is 6 minutes, "18:00" is 18 minutes. Never a plain number like 30 or 90, and never "30s" or "5 min".
 
-The shared clock shows on its own for time, amrap and emom stations. If every station is "count" but the stations run for a set time (for example 5 minutes at each station before the teams switch), add "timer": "5:00" to the workout: a countdown the trainer starts for each block, and every phone buzzes when it runs out. Use "timer": true for a clock that just counts up.
+The shared clock shows on its own for time, amrap and emom stations. If every station is "count" but the stations run for a set time (for example 5 minutes at each station before the teams switch), add "timer": "5:00" to the workout: a countdown the trainer starts for each block, and every phone shows Time! when it runs out. Use "timer": true for a clock that just counts up.
 
 ROTATION (race simulations)
 If athletes go through the stations in race order and everyone moves on at the same time (for example half on the treadmills and half on stations, switching every 3:30), add "slot": "3:30" to the workout: the time between switches. Give each station whose work is shorter a "time", e.g. "3:00"; the rest of the slot is for moving on. List the stations in race order, including each run. Each athlete or pair is one entry ("teams" = how many, up to 20, "teamSize" 1 or 2); the app spreads their starting stations by itself. Use "count" stations. Rotation workouts aren't ranked; add "ranked": true only if the card wants a winner.
@@ -1834,7 +1821,6 @@ function renderLive() {
     el.innerHTML = FIREBASE_CONFIG ? `
       <div class="live-top"><h2>Team phones</h2><a class="solid" href="${baseUrl()}">Back to live scoring</a></div>
       <p class="note">This phone is counting on its own. Nothing here is shared.</p>` : "";
-    if (W.slot || W.timer) el.innerHTML += `<div class="actions"><button class="ghost" id="buzzTest">Test buzz</button></div>${buzzMsg ? `<p class="note" role="status">${buzzMsg}</p>` : ""}`;
   } else if (view === "trainer" && !eventId.startsWith(today())) {
     el.innerHTML = `
       <div class="live-top">${label} ${eventId.slice(0, 4)}${conn}</div>
@@ -1851,8 +1837,7 @@ function renderLive() {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
       <div class="live-top"><span>Scoring for <b>${esc(state.teams[state.active].name)}</b></span>${conn}</div>
-      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button><button class="ghost" id="buzzTest">Test buzz</button></div>
-      ${buzzMsg ? `<p class="note" role="status">${buzzMsg}</p>` : ""}${msg}`;
+      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>${msg}`;
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
   } else if (view === "wait") {
@@ -1882,7 +1867,6 @@ const GUIDE = [
   { h: "Joining", team: true, p: [
     "Scan the QR code the trainer shows (or open the link) and pick your team. Your phone remembers it every week.",
     "Picked the wrong team? Tap **Switch team** at the top.",
-    "The phone buzzes at every station switch. Tap **Test buzz** at the top once before the start: Android phones on **Silent** don't buzz, and iPhones never do, so watch for the flash on the station tiles instead.",
     "Want it like an app, without the address bar? Android: browser menu > **Install app** (or Add to Home screen). iPhone: Safari **Share > Add to Home Screen**." ] },
   { h: "Counting", team: true, p: [
     "**Max** stations (cals, reps, meters, lanes): tap the **+** buttons as you go. One phone per team is easiest.",
@@ -1905,7 +1889,7 @@ const GUIDE = [
     "Timed workouts (for time, AMRAP, EMOM) have a shared clock. **Start clock** on the trainer phone; every phone and the big screen follow it.",
     "**Pause** stops the clock and the EMOM minutes (for a break); **Resume** carries on. **Set time** jumps to an exact time like 6:30, for example after a false start; EMOM ticks for minutes not reached yet are cleared. **Reset** starts over (it asks first).",
     "With several rounds, each round has its own clock: pick the round at the top first.",
-    "A workout with a **timer** (like 5:00) gets a countdown even if it only counts reps: every phone buzzes and shows **Time!** when it runs out, and **Start again** begins the next block." ] },
+    "A workout with a **timer** (like 5:00) gets a countdown even if it only counts reps: every phone flashes and shows **Time!** when it runs out, and **Start again** begins the next block." ] },
   { h: "Fixing scores as the trainer", p: [
     "Pick a team with the tabs above the stations to see and change its numbers, the same way a team does." ] },
   { h: "Workouts", p: [
@@ -1917,7 +1901,7 @@ const GUIDE = [
   { h: "Race simulation", p: [
     "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
     "Starts are spread out by themselves (in a race sim half on runs and half on stations). To change one, **Trainer tools > Start stations**: tap **Move** on a team, then the station. A free station moves it there, a taken one swaps the two.",
-    "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and buzzes at each switch. The big screen shows who's where and when the next switch is. There's no ranking.",
+    "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and flashes the station tiles at each switch. The big screen shows who's where and when the next switch is. There's no ranking.",
     "Team Output works the same way with **ranked** on: every team moves on every 6:00, each round is a whole rotation, and the big screen keeps the standings, with a big countdown to the next switch and each station's own timer (the same as on the phones). A station with **work** and **switch** (the Erg) shows its own parts: **part 2 of 3**, then **Switch** to the next machine." ] },
   { h: "Teams", p: [
     "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests.",
@@ -2009,7 +1993,6 @@ document.addEventListener("click", e => {
   else if (b.dataset.team) { state.active = +b.dataset.team; editing = null; }
   else if (b.dataset.k) {
     bump(state.active, b.dataset.k, +b.dataset.d);
-    if (navigator.vibrate) try { navigator.vibrate(8); } catch {}
   }
   else if (b.dataset.act) { const [act, sid] = b.dataset.act.split(":"); stationAction(state.active, act, sid); }
   else if (b.dataset.min) {
@@ -2036,7 +2019,6 @@ document.addEventListener("click", e => {
   else if (b.dataset.movecancel !== undefined) movePick = null;
   else if (b.dataset.moveto !== undefined) { if (movePick !== null && state.teams[movePick]) moveStart(movePick, +b.dataset.moveto); movePick = null; }
   else if (b.dataset.qr !== undefined) { qrFor = b.dataset.qr; return renderQrCard(); }
-  else if (b.id === "buzzTest") { buzzTest(); return; }
   else if (b.id === "qrOpen") { qrFor = ""; renderQrCard(); $("qrCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   else if (b.id === "qrClose") { qrFor = null; return renderQrCard(); }
   else if (b.id === "screenShare") return share(baseUrl() + "?screen", b);
