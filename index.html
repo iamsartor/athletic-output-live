@@ -194,6 +194,33 @@ h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; co
 .nownext.big .nn-t { font-size: clamp(1.6rem, 4vw, 4rem); }
 .nownext.big .nn-row.next { font-size: clamp(1.1rem, 2.4vw, 2.4rem); }
 .nownext.big .nn-l { font-size: clamp(.8rem, 1.4vw, 1.3rem); }
+/* Big view on a team phone: the clock, where you are and where you go next, readable from a few metres away. */
+.bigbtn { margin-left: auto; }
+#bigView { display: none; }
+body.bigview #bigView { display: flex; }
+body.bigview .wrap > :not(#bigView) { display: none !important; }
+body.bigview .wrap { max-width: none; min-height: 100dvh; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+#bigView { flex: 1; flex-direction: column; gap: 3vh; border-top: 8px solid var(--tc); padding: 2vh 4px 4px; }
+#bigView.rest { background: color-mix(in srgb, var(--t6) 22%, var(--bg)); padding-inline: 12px; border-radius: 0 0 14px 14px; }
+.bv-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-family: var(--display); font-weight: 800; text-transform: uppercase; }
+.bv-team { font-size: clamp(1.4rem, 7vw, 2.6rem); line-height: 1; overflow-wrap: anywhere; }
+.bv-rnd { color: var(--muted); font-size: clamp(1rem, 4.5vw, 1.6rem); white-space: nowrap; }
+.bv-body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 3vh; }
+.bv-l { display: block; font-size: clamp(.9rem, 4vw, 1.4rem); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.bv-clock { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; line-height: .85; font-size: clamp(4.5rem, min(44vw, 28vh), 18rem); }
+.bv-clock.mid { font-size: clamp(4rem, min(35vw, 24vh), 15rem); }
+.bv-clock.small { font-size: clamp(3rem, min(18vw, 14vh), 9rem); }
+.bv-now { font-family: var(--display); font-weight: 800; text-transform: uppercase; line-height: .95; font-size: clamp(2.4rem, min(16vw, 11vh), 8rem); overflow-wrap: anywhere; }
+.bv-now small { display: block; font-size: .45em; color: var(--muted); margin-top: .15em; }
+.bv-next { font-family: var(--display); font-weight: 800; text-transform: uppercase; line-height: 1; font-size: clamp(1.6rem, min(10vw, 7vh), 5rem); color: var(--muted); overflow-wrap: anywhere; }
+.bv-next b { color: var(--fg); }
+#bigView.flash .bv-now { animation: flash 1.2s ease-out 2; border-radius: 8px; }
+.bv-back { width: 100%; padding: 16px; font-size: 1.1rem; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .bv-body { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6vw; }
+  .bv-clock, .bv-clock.mid { font-size: min(34vh, 24vw); grid-row: span 2; }
+}
+@media (prefers-reduced-motion: reduce) { #bigView.flash .bv-now { animation: none; outline: 3px solid var(--tc, var(--accent)); } }
 .mins { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
 .mins button { border: 1px solid var(--line); border-radius: 10px; padding: 6px 4px; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
 .mins b { font-size: .7rem; color: var(--muted); font-weight: 600; }
@@ -269,6 +296,7 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 <div class="wrap">
   <section id="screen" hidden></section>
   <a id="scrBack" href="./" aria-label="Back" title="Back">&larr;</a>
+  <section id="bigView" aria-live="off"></section>
 
   <header>
     <h1 id="title">Team Output<small id="subtitle"></small></h1>
@@ -1102,7 +1130,7 @@ function rotCue() {
   // A new station: the tiles move round so the current one comes first.
   if (was.split("|")[1] !== String(a.k) && !editing) renderBoard();
   if (!clockStart(state.round) || paused(state.round) || !(view === "team" || view === "local")) return;
-  document.querySelectorAll("[data-rot]").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
+  document.querySelectorAll("[data-rot], #bigView").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
 }
 
 // Every phone flashes the clock when a countdown timer runs out; the trainer's buttons change to Start again.
@@ -1169,7 +1197,7 @@ function renderBoard() {
   if (!t) { board.innerHTML = ""; return; }
   board.setAttribute("style", tc(i));
   board.innerHTML = `
-    <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">${W.rounds > 1 ? "Round " + (r + 1) : ""}</span></div>
+    <div class="board-head"><span class="name">${esc(t.name)}</span><span class="rnd">${W.rounds > 1 ? "Round " + (r + 1) : ""}</span>${bigAllowed() ? `<button class="ghost bigbtn" id="bigOn">Big view</button>` : ""}</div>
     ${clockBar()}
     ${W.slot ? rotBox(i) : ""}
     <div class="grid">${boardOrder(i).map(s => { const h = STATION[s.type](s, t, r).replace(/<\/div>\s*$/, pbLine(s, t) + "</div>");
@@ -1231,7 +1259,7 @@ setInterval(() => {
   if (screenMode && W.slot) document.querySelectorAll("[data-slotclock]").forEach(el => { const h = slotClockHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rotstrip]").forEach(el => { const h = rotStripHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rothead]").forEach(el => { const h = esc(rotHead()); if (el.innerHTML !== h) el.innerHTML = h; });
-  rotCue(); timerCue(); phaseCue();
+  rotCue(); timerCue(); phaseCue(); if (bigOn) renderBig();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
@@ -1475,6 +1503,63 @@ function rotBoardHtml() {
     return `<div class="rot-cell${here.length ? " busy" : ""}${moving ? " moving" : ""}"><b>${esc(s.name)}</b>${here.map(([t, i]) =>
       `<span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>`).join("")}${moving ? `<i>move on</i>` : ""}</div>`; }).join("")}</div>`;
 }
+// ---- Big view on a team phone ----
+// The phone propped up by the station shows only the clock, where the team is now and where it goes
+// next, big enough to read mid-workout. Counting stays one tap away (Back to counting). Remembered per phone.
+const BIG_KEY = "team-output-live-bigview";
+let bigOn = (() => { try { return localStorage.getItem(BIG_KEY) === "1"; } catch { return false; } })();
+const bigAllowed = () => !screenMode && (view === "team" || view === "local") && !!state.teams[state.active];
+function setBig(on) { bigOn = on; try { on ? localStorage.setItem(BIG_KEY, "1") : localStorage.removeItem(BIG_KEY); } catch {} window.scrollTo(0, 0); }
+// The part of a multi-part workout that's running now: the first one the shared clock hasn't finished.
+function curPart() {
+  const parts = W.stations.filter(hasNowNext), el = elapsed(state.round);
+  return parts.find(s => !clockStart(state.round) || el < (s.type === "emom" ? s.minutes * 60 : s.cap || Infinity)) || parts[parts.length - 1];
+}
+function bigInfo() {
+  const r = state.round, pz = paused(r);
+  if (W.slot) {
+    const a = rotAt(state.active), left = fmt(Math.ceil(a.left)), cl = pz ? "Paused" : "Left";
+    if (a.phase === "wait") return { clock: fmt(W.slot), cl: "Waiting for the clock", l: "Start at", now: a.s.name, next: a.next };
+    if (a.phase === "done") return { clock: "0:00", cl: "Finished", l: "Done", now: `All ${W.stations.length} stations`, next: "" };
+    if (a.phase === "move") return { clock: left, cl, l: "Move to", now: a.next, next: "", rest: true };
+    if (a.phase === "switch") return { clock: left, cl, l: "Switch", now: a.s.name, sub: "Next machine", next: `Part ${a.part + 1} of ${a.parts}`, rest: true };
+    return { clock: left, cl, l: "Now", now: a.s.name, sub: a.part ? `Part ${a.part} of ${a.parts}` : "", next: a.part && a.part < a.parts ? "Switch machines" : a.next };
+  }
+  const clock = timed() ? clockText().replace(/ · paused$/, "").replace(/ left$/, "") : "", end = clockEnd();
+  const cl = !timed() ? "" : pz ? "Paused" : !clockStart(r) ? "Waiting for the clock" : timerDone() ? "" : (W.timer || W.stations.every(s => s.type === "amrap")) && end ? "Left" : "Clock";
+  const s = curPart();
+  if (s) {
+    // A part counting down (an EMOM minute, a capped part) shows its own time left big, the workout clock small.
+    const n = nowNext(s), m = /^(\d+:\d\d) left$/.exec(n.left), next = n.next === "done" ? "Finish" : n.next;
+    if (m) return { clock: m[1], cl: "Left", l: "Now", now: n.now, sub: clock ? `Clock ${clock}` : "", next };
+    return { clock, cl, l: "Now", now: n.now, sub: clockStart(r) && !pz ? n.left : "", next, rest: timerDone() };
+  }
+  return { clock, cl, l: W.stations.length === 1 ? "Now" : "", now: W.stations.length === 1 ? W.stations[0].name : W.name, next: "", rest: timerDone() };
+}
+const clockSize = t => t.length > 5 ? "small" : t.length > 4 ? "mid" : "";
+function bigHtml() {
+  const b = bigInfo(), t = state.teams[state.active];
+  return `<div class="bv-top"><span class="bv-team">${esc(t.name)}</span><span class="bv-rnd">${W.rounds > 1 ? "Round " + (state.round + 1) : ""}</span></div>
+    <div class="bv-body">
+      ${b.clock ? `<div><span class="bv-l">${esc(b.cl)}</span><div class="bv-clock ${clockSize(b.clock)}">${esc(b.clock)}</div></div>` : ""}
+      <div><span class="bv-l">${esc(b.l)}</span><div class="bv-now">${esc(b.now)}${b.sub ? `<small>${esc(b.sub)}</small>` : ""}</div></div>
+      ${b.next ? `<div class="bv-next"><span class="bv-l">Next</span><b>${esc(b.next)}</b></div>` : ""}
+    </div>
+    <button class="solid bv-back" id="bigOff">Back to counting</button>`;
+}
+function renderBig() {
+  const show = bigOn && bigAllowed(), el = $("bigView");
+  document.body.classList.toggle("bigview", show);
+  if (!show) { el.innerHTML = ""; delete el.dataset.key; return; }
+  el.setAttribute("style", tc(state.active));
+  const b = bigInfo(), key = JSON.stringify([state.active, state.teams[state.active].name, state.round, { ...b, clock: !!b.clock }]);
+  el.classList.toggle("rest", !!b.rest);
+  // Only the clock changes every second; the rest is redrawn when it changes, so a flash isn't restarted.
+  if (el.dataset.key !== key) { el.dataset.key = key; el.innerHTML = bigHtml(); return; }
+  const c = el.querySelector(".bv-clock");
+  if (c && c.textContent !== b.clock) { c.textContent = b.clock; c.className = "bv-clock " + clockSize(b.clock); }
+}
+
 // The small arrow on the big screen goes back to where it was opened from, or to the normal view
 // (a new tab or an installed app has no back button).
 $("scrBack").addEventListener("click", e => {
@@ -1930,6 +2015,8 @@ const GUIDE = [
     "**Team goal** (\"120 team reps\", \"2000 m\"): count towards the goal; the time is taken by itself when you reach it.",
     "**AMRAP**: tap **+1 round** and count reps. If a round has a fixed number of reps, just count reps: full rounds roll over by themselves.",
     "**EMOM**: a grid of minutes. Once the clock runs, passed minutes tick themselves off. Only tap a minute your team missed (tap again to undo). **Now / Next** shows this minute's exercise, the time left and what comes next." ] },
+  { h: "Big view", team: true, p: [
+    "Prop your phone up where you can see it and tap **Big view**: just the clock, where you are now and where you go next, in big type. Tap **Back to counting** to enter your numbers. Your phone remembers which view you had." ] },
   { h: "Fixing a mistake", team: true, p: [
     "Tap **Undo** under the buttons, or tap the big number and type the right one. On timed stations, **Clear result** starts over." ] },
   { h: "Your phone", team: true, p: [
@@ -2045,7 +2132,7 @@ function renderSections() {
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
 
-function renderAll() { renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); }
+function renderAll() { renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); renderBig(); }
 
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
@@ -2088,6 +2175,7 @@ document.addEventListener("click", e => {
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
   else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
   else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
+  else if (b.id === "bigOn" || b.id === "bigOff") { setBig(b.id === "bigOn"); editing = null; }
   else if (b.id === "clockStart") startClock();
   else if (b.id === "clockReset") {
     $("clockArea").innerHTML = `<span class="confirm">Reset the clock? <button class="solid-danger" id="clockYes">Reset</button><button class="ghost" id="clockNo">Cancel</button></span>`;
