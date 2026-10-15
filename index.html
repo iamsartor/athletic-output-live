@@ -569,7 +569,7 @@ function clockText() {
   return fmt(el) + (end ? ` / ${fmt(end)}` : "") + p;
 }
 const minuteNow = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60) + 1) : 0;
-const canRunClock = () => view === "local" || (view === "trainer" && eventId && eventId.startsWith(today()));
+const canRunClock = () => view === "local" || (trainerOn() && eventId && eventId.startsWith(today()));
 function startClock() {
   const r = state.round;
   if (live) return live.fb.set(path("clock", "r" + r), live.fb.serverTimestamp());
@@ -602,7 +602,44 @@ function setClock(secs) {
 
 async function connect() {
   const [app, fb] = await Promise.all([import(FB + "firebase-app.js"), import(FB + "firebase-database.js")]);
-  return { fb, db: fb.getDatabase(app.initializeApp(FIREBASE_CONFIG)) };
+  const a = app.initializeApp(FIREBASE_CONFIG);
+  return { fb, app: a, db: fb.getDatabase(a) };
+}
+
+// Trainer PIN. When the database rules ask for one, only an unlocked phone can start, switch or delete
+// sessions, run the clock, edit teams or save workouts; athletes count without it. The PIN itself is only in
+// the database (trainerPin, set in the Firebase console) and never reaches a phone. A phone that typed it
+// keeps it under its own anonymous sign-in (trainers/<uid>), so it asks once; a new PIN makes every phone ask again.
+// pinState: "check", "locked", "open" (unlocked, or rules without a PIN), "noauth" (anonymous sign-in is off).
+let pinState = "check", pinMsg = "";
+const trainerLocked = () => !!live && !screenMode && getRole() === "trainer" && (pinState === "check" || pinState === "locked");
+const trainerOn = () => view === "trainer" && !trainerLocked();
+async function checkPin(typed) {
+  let uid;
+  try {
+    if (!live.auth) {
+      const a = await import(FB + "firebase-auth.js"), auth = a.getAuth(live.app);
+      live.auth = { a, auth };
+      await auth.authStateReady();
+    }
+    const { a, auth } = live.auth;
+    if (!auth.currentUser) await a.signInAnonymously(auth);
+    uid = auth.currentUser.uid;
+  } catch { pinState = "noauth"; return renderAll(); }
+  const ref = live.fb.ref(live.db, "trainers/" + uid);
+  let have;
+  try { have = (await live.fb.get(ref)).val(); }
+  catch { pinState = "open"; return renderAll(); } // rules without a PIN: nothing to unlock
+  if (typed === undefined && have == null) { pinState = "locked"; return renderAll(); }
+  // A phone that was unlocked before opens right away; writing its PIN again checks it is still the current one.
+  if (typed === undefined) { pinState = "open"; renderAll(); }
+  try { await live.fb.set(ref, typed === undefined ? String(have) : typed); pinState = "open"; pinMsg = ""; }
+  catch {
+    pinState = "locked";
+    pinMsg = typed === undefined ? "The trainer PIN has changed. Type the new one." : "That's not the trainer PIN.";
+    if (have != null) live.fb.set(ref, null).catch(() => {});
+  }
+  renderAll();
 }
 const path = (...parts) => live.fb.ref(live.db, ["events", eventId, ...parts].join("/"));
 
@@ -612,6 +649,7 @@ async function initLive() {
   catch { view = "error"; liveMsg = "Couldn't reach the live scoreboard. Check the connection and reload."; return renderAll(); }
   live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); renderLive(); });
   live.fb.onValue(live.fb.ref(live.db, ".info/serverTimeOffset"), s => { serverOffset = s.val() || 0; });
+  if (getRole() === "trainer" && !screenMode) checkPin();
   live.fb.onValue(live.fb.ref(live.db, "workouts"), s => {
     saved = {};
     for (const [id, j] of Object.entries(s.val() || {})) { const w = parseWorkout(j); if (w) saved[id] = { ...w, id }; }
@@ -1037,7 +1075,7 @@ function moveStart(i, p) {
 }
 function renderStarts() {
   const el = $("startsCard");
-  el.hidden = screenMode || !W.slot || !(view === "trainer" || view === "local");
+  el.hidden = screenMode || !W.slot || !(trainerOn() || view === "local");
   if (el.hidden) return;
   const k = rotAt(0).k, now = clockStart(state.round) && k < W.stations.length, pick = state.teams[movePick];
   const who = p => state.teams.map((t, i) => [t, i]).filter(([, i]) => startOf(i) === p);
@@ -1292,7 +1330,7 @@ function pbLine(s, t) {
 }
 function renderHistory() {
   const el = $("historyCard");
-  el.hidden = screenMode || !(live && allEvents && view === "trainer");
+  el.hidden = screenMode || !(live && allEvents && trainerOn());
   if (el.hidden) return;
   const b = bests(), t = state.teams[state.active];
   const rec = W.stations.map(s => [s, b.rec[skey(W, s)]]).filter(([, r]) => r);
@@ -1342,7 +1380,7 @@ async function drawQR(el, url) {
 let qrFor = null; // null: closed, "": everyone, or a team id
 function renderQrCard() {
   const el = $("qrCard");
-  el.hidden = screenMode || qrFor === null || view !== "trainer" || !eventId || !eventId.startsWith(today());
+  el.hidden = screenMode || qrFor === null || !trainerOn() || !eventId || !eventId.startsWith(today());
   if (el.hidden) return;
   const t = state.teams.find(t => t.id === qrFor);
   if (qrFor && !t) qrFor = "";
@@ -1788,7 +1826,7 @@ const workoutOptions = sel => [...LIBRARY, ...savedList()].map(w => `<option val
 
 function renderWorkout(force) {
   const el = $("workoutCard"), a = document.activeElement;
-  el.hidden = !(view === "local" || view === "trainer");
+  el.hidden = !(view === "local" || trainerOn());
   if (el.hidden || (!force && el.contains(a) && a.tagName === "TEXTAREA")) return;
   const row = (w, own) => {
     const c = wConfirm && wConfirm.id === w.id ? wConfirm.kind : "";
@@ -1835,6 +1873,16 @@ function renderLive() {
       <div class="live-top"><h2>Team phones</h2><a class="solid" href="${baseUrl()}">Back to live scoring</a></div>
       <p class="note">This phone is counting on its own. Nothing here is shared.</p>` : "";
     if (W.slot || W.timer) el.innerHTML += `<div class="actions"><button class="ghost" id="buzzTest">Test buzz</button></div>${buzzMsg ? `<p class="note" role="status">${buzzMsg}</p>` : ""}`;
+  } else if (trainerLocked() && (view === "trainer" || view === "missing")) {
+    // Typing the PIN: a live update mustn't wipe what's typed.
+    if (document.activeElement?.id === "pinIn") return;
+    el.innerHTML = `
+      <div class="live-top"><h2>Trainer PIN</h2>${conn}</div>
+      ${pinState === "check" ? `<p class="note">Checking this phone…</p>` : `
+      <p class="note">Type the trainer PIN once on this phone to start sessions, run the clock and change teams. Athletes don't need it.</p>
+      <form class="actions" id="pinForm"><input id="pinIn" class="date" type="password" inputmode="numeric" autocomplete="off" maxlength="30" aria-label="Trainer PIN" placeholder="PIN">
+        <button class="solid">Unlock</button><button type="button" class="ghost" data-role="">I'm not the trainer</button></form>
+      ${pinMsg ? `<p class="note" role="status">${esc(pinMsg)}</p>` : ""}`}`;
   } else if (view === "trainer" && !eventId.startsWith(today())) {
     el.innerHTML = `
       <div class="live-top">${label} ${eventId.slice(0, 4)}${conn}</div>
@@ -1844,6 +1892,7 @@ function renderLive() {
     el.innerHTML = `
       <div class="live-top">${label}${conn}</div>
       <p class="note">Teams scan the QR code and pick their team once; their phone remembers it every week. You can fix any team's numbers below.</p>
+      ${pinState === "noauth" ? `<p class="note">Trainer sign-in is switched off in Firebase (Authentication, Anonymous), so trainer changes may not save.</p>` : ""}
       <div class="actions"><button class="solid" id="qrOpen">Show QR codes</button>
         <a class="ghost" href="${baseUrl()}?screen" target="_blank" rel="noopener">Open big screen</a>
         ${forcedEvent ? `<a class="ghost" href="${baseUrl()}">Back to today</a>` : ""}</div>${msg}`;
@@ -1897,6 +1946,7 @@ const GUIDE = [
     "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so." ] },
   { h: "Starting a session", p: [
     "Your own trainer link (**Trainer tools > Links > Send trainer link**, ends in ?trainer) opens the trainer view straight away; bookmark it or add it to the home screen. Without it, the small **Trainer?** link under the teams asks before switching.",
+    "The first time on a phone, the trainer view asks for the **trainer PIN**. The phone remembers it; when the PIN is changed, every trainer phone asks again. Athletes and the big screen never need it.",
     "On the trainer phone, pick today's workout and tap **Start today's session**. Each day gets its own session; teams and their names carry over from last time.",
     "Tap **Show QR codes**: the Everyone code lets each phone pick its team, a team's code sets the team directly. Teams that can't scan: send a link from **Trainer tools > Links**.",
     "**Open big screen** on a TV or laptop for live standings, the clock, Now / Next and a QR code to join. It has no buttons, so it can't be changed by accident.",
@@ -1936,7 +1986,7 @@ function renderHelp() {
 // Trainer tools: links for anyone who can't scan the QR code, an extra session, and switching role.
 function renderLinks() {
   const el = $("linksCard");
-  el.hidden = screenMode || view !== "trainer" || !eventId.startsWith(today());
+  el.hidden = screenMode || !trainerOn() || !eventId.startsWith(today());
   if (el.hidden) return;
   el.innerHTML = `
     <h2>Links</h2>
@@ -1955,7 +2005,7 @@ function renderLinks() {
 // Trainer only: today's sessions (switch every phone), past sessions (open on this phone), and adding a past one.
 function renderSessions() {
   const el = $("sessionsCard");
-  el.hidden = screenMode || !(live && getRole() === "trainer" && (view === "trainer" || view === "missing"));
+  el.hidden = screenMode || !(live && getRole() === "trainer" && !trainerLocked() && (view === "trainer" || view === "missing"));
   if (el.hidden) return;
   const t = today(), list = sessionList || [];
   const todays = list.filter(id => id.startsWith(t)), past = list.filter(id => !id.startsWith(t));
@@ -1992,12 +2042,12 @@ function renderSections() {
     return;
   }
   const scoring = ["local", "trainer", "team"].includes(view);
-  $("roundSeg").hidden = !scoring || W.rounds < 2;
-  $("board").hidden = !scoring;
-  $("teams").hidden = $("setupCard").hidden = !(view === "local" || view === "trainer");
+  $("roundSeg").hidden = !scoring || W.rounds < 2 || trainerLocked();
+  $("board").hidden = !scoring || trainerLocked();
+  $("teams").hidden = $("setupCard").hidden = !(view === "local" || trainerOn());
   $("standCard").hidden = !(scoring || view === "pick");
   $("picker").hidden = view !== "pick";
-  $("tools").hidden = !(view === "local" || view === "trainer" || (view === "missing" && live && getRole() === "trainer"));
+  $("tools").hidden = trainerLocked() || !(view === "local" || view === "trainer" || (view === "missing" && live && getRole() === "trainer"));
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
 
@@ -2024,6 +2074,7 @@ document.addEventListener("click", e => {
   else if (b.dataset.remove) { removeTeam(+b.dataset.remove); renderSetup(); }
   else if (b.dataset.role !== undefined) {
     setRole(b.dataset.role); editing = null; trainerAsk = false;
+    if (b.dataset.role === "trainer" && live && pinState === "check") checkPin();
     const i = state.teams.findIndex(t => t.id === b.dataset.role);
     if (view !== "missing") view = b.dataset.role === "trainer" ? "trainer" : i >= 0 ? "team" : "pick";
     if (i >= 0) state.active = i;
@@ -2088,6 +2139,14 @@ document.addEventListener("click", e => {
   }
   else return;
   save(); renderAll();
+});
+
+document.addEventListener("submit", e => {
+  if (e.target.id !== "pinForm") return;
+  e.preventDefault();
+  const pin = $("pinIn").value.trim(); if (!pin) return;
+  pinMsg = "Checking…"; $("pinIn").blur(); renderLive();
+  checkPin(pin);
 });
 
 document.addEventListener("change", e => {
