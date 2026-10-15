@@ -520,7 +520,8 @@ const ROLE_KEY = "team-output-live-role";
 const FIRST_DAY = "2025-01-01", MAX_PER_DAY = 9;
 let live = null, eventId = null, stopEvent = null, latest = null, connected = true, liveMsg = "", sessionList = null;
 let liveClocks = {}, serverOffset = 0;
-let view = !FIREBASE_CONFIG || params.has("local") ? "local" : "wait";
+// "local" is only for a copy of the app without Firebase; the live app has no phone-on-its-own mode any more.
+let view = !FIREBASE_CONFIG ? "local" : "wait";
 const getRole = () => { try { return localStorage.getItem(ROLE_KEY); } catch { return null; } };
 const setRole = r => { try { r ? localStorage.setItem(ROLE_KEY, r) : localStorage.removeItem(ROLE_KEY); } catch {} };
 if (params.get("team")) setRole(params.get("team"));
@@ -736,7 +737,7 @@ async function joinStep() {
   if (!ok) { view = screenMode ? view : "scan"; }
   renderAll();
 }
-// Taps count when this phone may write: the trainer, a phone on its own, or a registered phone while the
+// Taps count when this phone may write: the trainer, a copy without Firebase, or a registered phone while the
 // trainer hasn't locked the scores.
 const canCount = () => !live || view === "trainer" || ((joinState === "in" || joinState === "open") && !state.locked);
 const screenUrl = () => baseUrl() + "?screen" + (trainerKey ? "&k=" + trainerKey : "");
@@ -2151,8 +2152,7 @@ function renderLive() {
     el.innerHTML = `
       <h2>Scan the QR code to join</h2>
       <p class="note">${joinCode ? "This phone's code is from an earlier session. " : ""}Scan the QR code the trainer shows at the gym. Each session has its own code, so only people in the class can count.</p>
-      <p class="note trainer-entry">${trainerEntry()}</p>
-      <div class="actions"><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>${msg}`;
+      <p class="note trainer-entry">${trainerEntry()}</p>${msg}`;
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
   } else if (view === "wait") {
@@ -2162,14 +2162,13 @@ function renderLive() {
       <div class="live-top"><h2>Today's session hasn't started</h2>${conn}</div>
       <p class="note">This page updates by itself as soon as the trainer starts it.${getRole() === "trainer" ? " Pick the workout and start it here. The teams from last time carry over." : ""}</p>
       ${getRole() === "trainer" ? `<div class="actions"><select class="date" id="startPick" aria-label="Workout for today">${workoutOptions(startPick)}</select>
-        <button class="solid" id="startToday">Start today's session</button>
-        <a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>` : `<p class="note trainer-entry">${trainerEntry()}</p>`}
+        <button class="solid" id="startToday">Start today's session</button></div>` : `<p class="note trainer-entry">${trainerEntry()}</p>`}
       ${msg}`;
   } else {
     el.innerHTML = `
       <h2>${view === "missing" ? "Session not found" : "Live scoring unavailable"}</h2>
       <p class="note">${view === "missing" ? "There's no session for that date." : esc(liveMsg)}</p>
-      <div class="actions"><a class="ghost" href="${baseUrl()}">Go to today's session</a><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>`;
+      <div class="actions"><a class="ghost" href="${baseUrl()}">Go to today's session</a></div>`;
   }
   el.hidden = !el.innerHTML.trim();
   renderLinks(); renderOnline();
@@ -2305,7 +2304,7 @@ function renderSections() {
   $("picker").hidden = view !== "pick";
   // On a team phone, the team and session sit under the scores; the top card is the screen-lock reminder.
   $("teamFoot").hidden = view !== "team";
-  if (view === "team") $("teamFoot").innerHTML = `<span class="note">${esc(state.teams[state.active].name)} · Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button>`;
+  if (view === "team") $("teamFoot").innerHTML = `<span class="note">${esc(state.teams[state.active].name)} · Session ${esc(eventLabel(eventId))}</span><span id="switchArea"><button class="ghost" id="switchTeam">Switch team</button></span>`;
   $("tools").hidden = trainerLocked() || !(view === "local" || view === "trainer" || (view === "missing" && live && getRole() === "trainer"));
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
@@ -2351,6 +2350,13 @@ document.addEventListener("click", e => {
   else if (b.id === "qrClose") { qrFor = null; return renderQrCard(); }
   else if (b.id === "screenShare") return share(screenUrl(), b);
   else if (b.id === "lockScores") { setLocked(!state.locked); return; }
+  // Once the workout clock has started, switching team asks first: taps then count for the other team.
+  else if (b.id === "switchTeam" && clockStart(state.round)) {
+    $("switchArea").innerHTML = `<span class="confirm">The workout is running. Count for another team from now on? <button class="solid" data-role="">Switch</button><button class="ghost" id="switchNo">Cancel</button></span>`;
+    return;
+  }
+  else if (b.id === "switchTeam") { setRole(""); editing = null; view = "pick"; window.scrollTo(0, 0); joinEvent(); }
+  else if (b.id === "switchNo") { renderSections(); return; }
   else if (b.id === "trainerShare") return share(baseUrl() + "?trainer", b);
   else if (b.id === "trainerAsk" || b.id === "trainerNo") { trainerAsk = b.id === "trainerAsk"; }
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
