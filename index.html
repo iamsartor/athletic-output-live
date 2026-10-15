@@ -222,6 +222,7 @@ body.bigview .wrap { max-width: none; min-height: 100dvh; padding: 12px 16px cal
 .bv-next { font-family: var(--display); font-weight: 800; text-transform: uppercase; line-height: 1; font-size: clamp(1.6rem, min(10vw, 7vh), 5rem); color: var(--muted); overflow-wrap: anywhere; }
 .bv-next b { color: var(--fg); }
 #bigView.flash .bv-now { animation: flash 1.2s ease-out 2; border-radius: 8px; }
+.bv-lock .lock-bar { margin: 6px 0 0; }
 .bv-back { width: 100%; padding: 16px; font-size: 1.1rem; }
 @media (orientation: landscape) and (max-height: 500px) {
   .bv-body { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6vw; }
@@ -1554,6 +1555,7 @@ function bigHtml() {
       <div><span class="bv-l">${esc(b.l)}</span><div class="bv-now">${esc(b.now)}${b.sub ? `<small>${esc(b.sub)}</small>` : ""}</div></div>
       ${b.next ? `<div class="bv-next"><span class="bv-l">Next</span><b>${esc(b.next)}</b></div>` : ""}
     </div>
+    <div class="bv-lock" data-lock><span class="lock-title" data-lt></span><div class="lock-bar" data-lb><span></span></div></div>
     <button class="solid bv-back" id="bigOff">Back to counting</button>`;
 }
 function renderBig() {
@@ -1564,7 +1566,7 @@ function renderBig() {
   const b = bigInfo(), key = JSON.stringify([state.active, state.teams[state.active].name, state.round, { ...b, clock: !!b.clock }]);
   el.classList.toggle("rest", !!b.rest);
   // Only the clock changes every second; the rest is redrawn when it changes, so a flash isn't restarted.
-  if (el.dataset.key !== key) { el.dataset.key = key; el.innerHTML = bigHtml(); return; }
+  if (el.dataset.key !== key) { el.dataset.key = key; el.innerHTML = bigHtml(); lockTick(); return; }
   const c = el.querySelector(".bv-clock");
   if (c && c.textContent !== b.clock) { c.textContent = b.clock; c.className = "bv-clock " + clockSize(b.clock); }
 }
@@ -1985,9 +1987,9 @@ function renderLive() {
   } else if (view === "team") {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
-      <div class="live-top"><span class="lock-title" id="lockTitle"></span>${conn}</div>
-      <div class="lock-bar" id="lockBar"><span id="lockFill"></span></div>
-      <p class="note" id="lockSub"></p>${msg}`;
+      <div data-lock><div class="live-top"><span class="lock-title" data-lt></span>${conn}</div>
+      <div class="lock-bar" data-lb><span></span></div>
+      <p class="note" data-ls></p></div>${msg}`;
     lockTick();
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
@@ -2270,21 +2272,25 @@ async function wake() {
   try { wakeHeld = await navigator.wakeLock.request("screen"); } catch {}
   wakeAsking = false;
 }
-// The reminder on a team phone: a bar that empties as the screen-on time runs out, full while the clock runs.
+// The reminder on a team phone and in its big view: a bar that empties as the screen-on time runs out,
+// full while the clock runs. The big view shows only the title and the bar.
 function lockTick() {
-  const title = $("lockTitle"); if (!title) return;
-  const bar = $("lockBar"), fill = $("lockFill"), sub = $("lockSub");
-  if (!navigator.wakeLock) { title.textContent = "Lock your phone when you put it down"; bar.hidden = true; sub.textContent = ""; return; }
-  const left = Math.max(0, 1 - (Date.now() - lastTap) / (AWAKE_MIN * 60000)), workout = clockKeepsAwake();
-  bar.hidden = false; bar.classList.toggle("on", workout);
-  const w = (workout ? 100 : left * 100) + "%";
-  // A freshly drawn bar jumps straight to its width instead of sliding there.
-  if (!fill.style.width) { fill.style.transition = "none"; fill.style.width = w; void fill.offsetWidth; fill.style.transition = ""; }
-  else fill.style.width = w;
-  title.textContent = workout ? "Screen stays on during the workout" : "Lock your phone when you put it down";
-  sub.textContent = workout ? "When the workout is over, lock your phone before you put it down."
-    : left ? "The screen stays on while you're counting. When the bar runs out, your phone can lock itself again."
-    : "Your phone can lock itself now. Tap to keep the screen on.";
+  const boxes = document.querySelectorAll("[data-lock]"); if (!boxes.length) return;
+  const left = Math.max(0, 1 - (Date.now() - lastTap) / (AWAKE_MIN * 60000)), workout = clockKeepsAwake(), w = (workout ? 100 : left * 100) + "%";
+  for (const box of boxes) {
+    const title = box.querySelector("[data-lt]"), bar = box.querySelector("[data-lb]"), fill = bar.firstElementChild, sub = box.querySelector("[data-ls]");
+    const has = !!navigator.wakeLock;
+    title.textContent = has && workout ? "Screen stays on during the workout" : "Lock your phone when you put it down";
+    bar.hidden = !has;
+    if (sub) sub.textContent = !has ? "" : workout ? "When the workout is over, lock your phone before you put it down."
+      : left ? "The screen stays on while you're counting. When the bar runs out, your phone can lock itself again."
+      : "Your phone can lock itself now. Tap to keep the screen on.";
+    if (!has) continue;
+    bar.classList.toggle("on", workout);
+    // A freshly drawn bar jumps straight to its width instead of sliding there.
+    if (!fill.style.width) { fill.style.transition = "none"; fill.style.width = w; void fill.offsetWidth; fill.style.transition = ""; }
+    else fill.style.width = w;
+  }
 }
 setInterval(lockTick, 1000);
 for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { lastTap = Date.now(); wake(); lockTick(); }, true);
