@@ -310,6 +310,7 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
   <section class="card" id="picker" hidden>
     <h2>Which team are you?</h2>
     <div class="pick" id="pickList"></div>
+    <p class="note">Your screen stays on while you count. Don't leave your phone lying around unlocked: lock it when you put it down.</p>
     <p class="note trainer-entry" id="trainerEntry"></p>
   </section>
 
@@ -1976,7 +1977,8 @@ function renderLive() {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
       <div class="live-top"><span>Scoring for <b>${esc(state.teams[state.active].name)}</b></span>${conn}</div>
-      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>${msg}`;
+      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>
+      <p class="note">Your screen stays on while you count. Don't leave your phone lying around unlocked: lock it when you put it down.</p>${msg}`;
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
   } else if (view === "wait") {
@@ -2017,6 +2019,9 @@ const GUIDE = [
     "Prop your phone up where you can see it and tap **Big view**: just the clock, where you are now and where you go next, in big type. Tap **Back to counting** to enter your numbers. Your phone remembers which view you had." ] },
   { h: "Fixing a mistake", team: true, p: [
     "Tap **Undo** under the buttons, or tap the big number and type the right one. On timed stations, **Clear result** starts over." ] },
+  { h: "Your phone", team: true, p: [
+    "While you count, this page keeps the screen on. After 3 minutes without a tap it lets your phone lock itself as usual, except while the workout clock runs.",
+    "Don't leave your phone lying around unlocked in the gym: anyone who picks it up can use all of it, not just this page. Lock it when you put it down. This app only keeps the screen on; it can't protect your phone." ] },
   { h: "Who wins", team: true, p: [
     "Each station ranks the teams (1 is best, ties share a place). The ranks add up to points, and the **lowest points win**. With several rounds, each station counts all rounds together.",
     "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so." ] },
@@ -2237,9 +2242,27 @@ document.addEventListener("input", e => {
   save(); renderTeams(); renderBoard(); renderStandings(); renderLive();
 });
 
-// Keep the screen awake while counting, where the browser allows it.
-async function wake() { try { if (navigator.wakeLock && document.visibilityState === "visible") await navigator.wakeLock.request("screen"); } catch {} }
-document.addEventListener("visibilitychange", wake);
+// Keep the screen awake while counting, where the browser allows it. After AWAKE_MIN minutes without a tap
+// the phone may lock itself again as usual, so a phone left in the gym doesn't stay unlocked for anyone to take.
+// It stays on while the workout clock runs (up to its end, or an hour), and the big screen always stays on.
+const AWAKE_MIN = 3;
+let wakeHeld = null, wakeAsking = false, lastTap = Date.now();
+function keepAwake() {
+  if (screenMode || Date.now() - lastTap < AWAKE_MIN * 60000) return true;
+  if (!(clockStart(state.round) > 0)) return false;
+  return elapsed(state.round) < (clockEnd() || 3600);
+}
+async function wake() {
+  if (!navigator.wakeLock || document.visibilityState !== "visible") return;
+  if (!keepAwake()) { const h = wakeHeld; wakeHeld = null; if (h && !h.released) h.release().catch(() => {}); return; }
+  if ((wakeHeld && !wakeHeld.released) || wakeAsking) return;
+  wakeAsking = true;
+  try { wakeHeld = await navigator.wakeLock.request("screen"); } catch {}
+  wakeAsking = false;
+}
+for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { lastTap = Date.now(); wake(); }, true);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") lastTap = Date.now(); wake(); });
+setInterval(wake, 15000);
 wake();
 
 renderSetup(); renderAll();
