@@ -399,7 +399,7 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 // Sessions saved before workouts existed have no copy of their workout and use this one,
 // so keep it exactly as it is. To change Team Output, add a new entry with a new id.
 const TEAM_OUTPUT = {
-  id: "team-output", name: "Team Output", place: "Thursday Athletic", teams: 4, teamSize: 3, rounds: 2,
+  id: "team-output", name: "Team Output", teams: 4, teamSize: 3, rounds: 2,
   stations: [
     { id: "erg", name: "Erg",       type: "count", unit: "cals",   steps: [1, 5, 10],    info: "90s/person · Ski, Row, Bike" },
     { id: "wb",  name: "Wallballs", type: "count", unit: "reps",   steps: [1, 5, 10],    info: "5 min AMRAP · max 20/ball" },
@@ -409,7 +409,7 @@ const TEAM_OUTPUT = {
 };
 
 // Other workouts come from the trainer: pasted in the Workouts card (under Trainer tools) and shared
-// with every phone. Real Kaifu Lodge cards written in this format are in card-examples/README.md.
+// with every phone. Real workout cards written in this format are in card-examples/README.md.
 const WORKOUTS = [TEAM_OUTPUT];
 
 const DEFAULT_WORKOUT = "team-output";
@@ -1483,7 +1483,7 @@ function bests() {
   }
   return bestsMemo = { stamp, pb, rec };
 }
-// PBs, records and team bests are retired for now (Michael, 2026-10-12: teams change from week to week).
+// PBs, records and team bests are retired for now (2026-10-12: teams change from week to week).
 // Set to true to bring them back: tiles, standings, History and the glitter for them all follow it.
 const SHOW_BESTS = false;
 // "Record" when a team beats every earlier result, "PB" when it beats its own earlier best.
@@ -1877,7 +1877,7 @@ let wConfirm = null, pasteText = "", pasteCheck = null, wMsg = "", startPick = D
 const LLM_PROMPT = `You convert a group workout into a JSON file for our team scoring app.
 
 CONTEXT
-- The setting: a Hyrox-style group class on Thursdays (Thursday Athletic). Usually 4 teams of 3 work at the same time and share the work within the team.
+- The setting: a Hyrox-style group class. Usually 4 teams of 3 work at the same time and share the work within the team.
 - Each team scores on its own phone. Every station is a tile with a big number and three + buttons (the "steps"), so pick steps that match how fast the number grows.
 - The trainer starts a shared clock for timed parts. A big screen shows the live standings.
 - Each station ranks the teams, the ranks are added up, and the lowest total wins, so every station counts equally. Only make something a station if it should count for the ranking. The exception is an EMOM: it shows as a grid of minutes for each team's own progress and isn't ranked unless you add "scored": true.
@@ -1888,7 +1888,7 @@ THE FORMAT
 {
   "id": "short-name",
   "name": "Name shown in the app",
-  "place": "Thursday Athletic",
+  "place": "Group class",
   "teams": 4,
   "teamSize": 3,
   "rounds": 1,
@@ -1932,7 +1932,7 @@ If athletes go through the stations in race order and everyone moves on at the s
 The same works for team stations where all teams switch together (for example 4 teams on 4 stations, 6:00 per station including rest): "slot": "6:00", "ranked": true, and "rounds" if the whole rotation is done again. If athletes swap machines inside a station (Ski, Row, Bike: 1:30 work, 0:30 to swap), give that station "work": "1:30" and "switch": "0:30".
 
 EXAMPLE 1 (max effort stations, done twice)
-{"id":"team-output-b","name":"Team Output B","place":"Thursday Athletic","teams":4,"teamSize":3,"rounds":2,"timer":"5:00","stations":[
+{"id":"team-output-b","name":"Team Output B","place":"Group class","teams":4,"teamSize":3,"rounds":2,"timer":"5:00","stations":[
  {"id":"erg","name":"Erg","type":"count","unit":"cals","steps":[1,5,10],"info":"90s/person · Ski, Row, Bike"},
  {"id":"wb","name":"Wallballs","type":"count","unit":"reps","steps":[1,5,10],"info":"5 min AMRAP · max 20/ball"},
  {"id":"run","name":"Run","type":"count","unit":"meters","steps":[10,50,100],"info":"5 min · +1% incline/min"}]}

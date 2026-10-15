@@ -1,7 +1,7 @@
 {
   "name": "Team Output Live",
   "short_name": "Team Output",
-  "description": "Live scoring for the Thursday Athletic team workouts.",
+  "description": "Live scoring for team workouts.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
