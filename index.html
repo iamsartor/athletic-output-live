@@ -686,11 +686,67 @@ async function checkPin(typed) {
 }
 const path = (...parts) => live.fb.ref(live.db, ["events", eventId, ...parts].join("/"));
 
+// Phones online, for the trainer. While its page is open and connected, every phone keeps one small entry
+// under online/ (its session and what it is: team, picking a team, big screen or trainer), and the server
+// removes it when the phone disconnects or locks. Each phone also marks today's session it opens once under
+// seen/<session>/. Both use a random id this phone makes up, never a name, and only an unlocked trainer
+// phone can read them. Without the rules for them the writes fail quietly and the trainer sees a hint.
+const DEVICE_KEY = "team-output-live-device";
+const rid = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+const deviceId = (() => {
+  try { let d = localStorage.getItem(DEVICE_KEY); if (!/^[a-z0-9]{10}$/.test(d || "")) { d = rid(10); localStorage.setItem(DEVICE_KEY, d); } return d; }
+  catch { return rid(10); }
+})();
+// Two tabs on one phone are two entries, counted as one phone.
+const presenceId = deviceId + "-" + rid(4);
+let presenceSent = "", seenSent = new Set(), online = null, seenCount = null, onlineFor = "", stopOnline = null;
+const presenceKind = () => screenMode ? "screen" : getRole() === "trainer" ? "trainer" : view === "team" ? "team" : "pick";
+function syncPresence() {
+  if (!live || !connected) return;
+  const v = { e: eventId || "", k: presenceKind() }, sig = v.e + "/" + v.k;
+  if (sig !== presenceSent) {
+    presenceSent = sig;
+    const r = live.fb.ref(live.db, "online/" + presenceId);
+    live.fb.onDisconnect(r).remove().catch(() => {});
+    live.fb.set(r, { ...v, t: live.fb.serverTimestamp() }).catch(() => {});
+  }
+  if (eventId && eventId.startsWith(today()) && !seenSent.has(eventId)) {
+    seenSent.add(eventId);
+    live.fb.set(live.fb.ref(live.db, `seen/${eventId}/${deviceId}`), live.fb.serverTimestamp()).catch(() => {});
+  }
+}
+// The trainer listens to both only while the trainer view of today's session is open.
+function watchOnline() {
+  const want = live && trainerOn() && eventId?.startsWith(today()) ? eventId : "";
+  if (want === onlineFor) return;
+  if (stopOnline) stopOnline();
+  stopOnline = null; online = seenCount = null; onlineFor = want;
+  if (!want) return;
+  const a = live.fb.onValue(live.fb.ref(live.db, "online"), s => { online = s.val() || {}; renderOnline(); }, () => { online = false; renderOnline(); });
+  const b = live.fb.onValue(live.fb.ref(live.db, "seen/" + want), s => { seenCount = Object.keys(s.val() || {}).length; renderOnline(); }, () => {});
+  stopOnline = () => { a(); b(); };
+}
+function renderOnline() {
+  const el = $("onlineNow");
+  if (!el) return;
+  if (online === null) { el.innerHTML = ""; return; }
+  if (online === false) { el.innerHTML = "Phones online: publish the new database rules to see them here."; return; }
+  const phones = new Map();
+  for (const [id, p] of Object.entries(online)) if (p && typeof p === "object") phones.set(id.split("-")[0], p);
+  const here = [...phones.values()].filter(p => p.e === eventId), n = k => here.filter(p => p.k === k).length;
+  const kinds = [[n("team"), "counting for a team"], [n("pick"), "picking a team"], [n("screen"), "big screen"], [n("trainer"), "trainer"]]
+    .filter(([c]) => c).map(([c, t]) => `${c} ${t}`).join(", ");
+  const elsewhere = phones.size - here.length;
+  el.innerHTML = `<b>${here.length}</b> ${here.length === 1 ? "phone" : "phones"} online in this session${kinds ? ` (${kinds})` : ""}${elsewhere ? `, ${elsewhere} elsewhere` : ""}.`
+    + (seenCount ? ` ${seenCount} ${seenCount === 1 ? "phone has" : "phones have"} opened it today.` : "")
+    + (phones.size >= 80 ? ` The free Firebase plan allows 100 at once.` : "");
+}
+
 async function initLive() {
   if (!FIREBASE_CONFIG) { view = "error"; liveMsg = "Live scoring isn't switched on in this copy of the app yet."; return renderAll(); }
   try { live = await connect(); }
   catch { view = "error"; liveMsg = "Couldn't reach the live scoreboard. Check the connection and reload."; return renderAll(); }
-  live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); renderLive(); });
+  live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); if (connected) presenceSent = ""; renderLive(); });
   live.fb.onValue(live.fb.ref(live.db, ".info/serverTimeOffset"), s => { serverOffset = s.val() || 0; });
   if (getRole() === "trainer" && !screenMode) checkPin();
   live.fb.onValue(live.fb.ref(live.db, "workouts"), s => {
@@ -921,6 +977,8 @@ async function addPastSession(date, btn) {
 async function deleteSession() {
   const id = eventId; dropPending(); clearTimeout(flushTimer);
   await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: null, ...(latest === id ? { current: null } : {}) });
+  // Separate, so deleting still works with rules from before seen/ existed.
+  live.fb.remove(live.fb.ref(live.db, "seen/" + id)).catch(() => {});
   sessionList = null; loadSessions();
   if (forcedEvent) location.href = baseUrl(); else { latest = latest === id ? null : latest; eventId = null; followToday(); }
 }
@@ -1962,6 +2020,8 @@ function renderWorkout(force) {
 }
 
 function renderLive() {
+  // Every change of session, role or connection passes through here, so the phone's online entry follows it.
+  syncPresence(); watchOnline();
   if (screenMode) { $("live").hidden = true; return; }
   const el = $("live"), msg = liveMsg ? `<p class="note">${esc(liveMsg)}</p>` : "";
   const conn = `<span class="conn${connected ? "" : " off"}">${connected ? "Live" : "Offline, will sync"}</span>`;
@@ -1992,6 +2052,7 @@ function renderLive() {
     el.innerHTML = `
       <div class="live-top">${label}${conn}</div>
       <p class="note">Teams scan the QR code and pick their team once; their phone remembers it every week. You can fix any team's numbers below.</p>
+      <p class="note" id="onlineNow" aria-live="polite"></p>
       <div class="actions"><button class="solid" id="qrOpen">Show QR codes</button>
         <a class="ghost" href="${baseUrl()}?screen" target="_blank" rel="noopener">Open big screen</a>
         ${forcedEvent ? `<a class="ghost" href="${baseUrl()}">Back to today</a>` : ""}</div>${msg}`;
@@ -2021,7 +2082,7 @@ function renderLive() {
       <div class="actions"><a class="ghost" href="${baseUrl()}">Go to today's session</a><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>`;
   }
   el.hidden = !el.innerHTML.trim();
-  renderLinks();
+  renderLinks(); renderOnline();
 }
 
 // ---- How it works ----
