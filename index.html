@@ -796,6 +796,9 @@ function flush() {
 // Send right away when the phone is locked or the tab is closed.
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
 addEventListener("pagehide", flush);
+// A page the browser brings back from its back-forward cache (swiping back and forward again) has lost its
+// live connection and would sit frozen, so it loads afresh instead.
+addEventListener("pageshow", e => { if (e.persisted) location.reload(); });
 
 // Every change goes through these, so the same buttons work on one phone or in a live session.
 function setValue(i, key, v) {
@@ -1520,6 +1523,14 @@ const BIG_KEY = "team-output-live-bigview";
 let bigOn = (() => { try { return localStorage.getItem(BIG_KEY) === "1"; } catch { return false; } })();
 const bigAllowed = () => !screenMode && (view === "team" || view === "local") && !!state.teams[state.active];
 function setBig(on) { bigOn = on; try { on ? localStorage.setItem(BIG_KEY, "1") : localStorage.removeItem(BIG_KEY); } catch {} window.scrollTo(0, 0); }
+// The big view is its own step in the browser history, so swiping back (or the back button) closes it
+// and returns to counting, instead of leaving the page.
+const bigInHistory = () => history.state?.big === 1;
+function openBig() { setBig(true); if (!bigInHistory()) history.pushState({ big: 1 }, ""); }
+function closeBig() { if (bigInHistory()) history.back(); else setBig(false); }
+addEventListener("popstate", () => { const want = bigInHistory(); if (want !== bigOn) { setBig(want); renderAll(); } });
+// A big view remembered from last time also gets its step, so the first swipe back closes it.
+if (bigOn && !screenMode && getRole() !== "trainer" && !bigInHistory()) { history.replaceState(null, ""); history.pushState({ big: 1 }, ""); }
 // The part of a multi-part workout that's running now: the first one the shared clock hasn't finished.
 function curPart() {
   const parts = W.stations.filter(hasNowNext), el = elapsed(state.round);
@@ -2190,7 +2201,8 @@ document.addEventListener("click", e => {
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
   else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
   else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
-  else if (b.id === "bigOn" || b.id === "bigOff") { setBig(b.id === "bigOn"); editing = null; }
+  else if (b.id === "bigOn") { openBig(); editing = null; }
+  else if (b.id === "bigOff") { editing = null; if (bigInHistory()) return closeBig(); setBig(false); }
   else if (b.id === "clockStart") startClock();
   else if (b.id === "clockReset") {
     $("clockArea").innerHTML = `<span class="confirm">Reset the clock? <button class="solid-danger" id="clockYes">Reset</button><button class="ghost" id="clockNo">Cancel</button></span>`;
