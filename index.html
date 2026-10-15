@@ -130,6 +130,13 @@ td .avg { display: block; font-size: .7rem; color: var(--muted); white-space: no
 .live { border-left: 6px solid var(--tc, var(--accent)); }
 .live-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .code { font-family: var(--display); font-weight: 800; font-size: 1.6rem; letter-spacing: .12em; }
+.lock-title { font-weight: 600; font-size: .9rem; }
+.lock-title::before { content: "🔒 "; }
+/* Shows how long the screen stays on without a tap. It empties and never counts down in numbers, so it can't be taken for the workout clock. */
+.lock-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; margin: 8px 0 6px; }
+.lock-bar span { display: block; height: 100%; width: 100%; background: var(--tc, var(--t1)); transition: width 1s linear; }
+.lock-bar.on span { transition: none; }
+.team-foot { justify-content: space-between; margin: 4px 0 16px; }
 .conn { display: inline-flex; align-items: center; gap: 6px; font-size: .8rem; font-weight: 600; color: var(--muted); }
 .conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--t3); }
 .conn.off::before { background: var(--danger); }
@@ -317,6 +324,8 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
   <nav class="teams" id="teams" aria-label="Teams"></nav>
 
   <section class="board" id="board" aria-live="polite"></section>
+
+  <div class="actions team-foot" id="teamFoot" hidden></div>
 
   <section class="card" id="standCard">
     <h2>Standings</h2>
@@ -1976,9 +1985,10 @@ function renderLive() {
   } else if (view === "team") {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
-      <div class="live-top"><span>Scoring for <b>${esc(state.teams[state.active].name)}</b></span>${conn}</div>
-      <div class="actions"><span class="note">Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button></div>
-      <p class="note">Your screen stays on while you count. Don't leave your phone lying around unlocked: lock it when you put it down.</p>${msg}`;
+      <div class="live-top"><span class="lock-title" id="lockTitle"></span>${conn}</div>
+      <div class="lock-bar" id="lockBar"><span id="lockFill"></span></div>
+      <p class="note" id="lockSub"></p>${msg}`;
+    lockTick();
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
   } else if (view === "wait") {
@@ -2007,7 +2017,7 @@ function renderLive() {
 const GUIDE = [
   { h: "Joining", team: true, p: [
     "Scan the QR code the trainer shows (or open the link) and pick your team. Your phone remembers it every week.",
-    "Picked the wrong team? Tap **Switch team** at the top.",
+    "Picked the wrong team? Tap **Switch team** under the scores.",
     "Want it like an app, without the address bar? Android: browser menu > **Install app** (or Add to Home screen). iPhone: Safari **Share > Add to Home Screen**." ] },
   { h: "Counting", team: true, p: [
     "**Max** stations (cals, reps, meters, lanes): tap the **+** buttons as you go. One phone per team is easiest.",
@@ -2020,7 +2030,7 @@ const GUIDE = [
   { h: "Fixing a mistake", team: true, p: [
     "Tap **Undo** under the buttons, or tap the big number and type the right one. On timed stations, **Clear result** starts over." ] },
   { h: "Your phone", team: true, p: [
-    "While you count, this page keeps the screen on. After 3 minutes without a tap it lets your phone lock itself as usual, except while the workout clock runs.",
+    "While you count, this page keeps the screen on. The bar at the top empties when nobody taps; once it runs out (after 3 minutes) your phone can lock itself as usual. While the workout clock runs, the bar stays full and the screen stays on.",
     "Don't leave your phone lying around unlocked in the gym: anyone who picks it up can use all of it, not just this page. Lock it when you put it down. This app only keeps the screen on; it can't protect your phone." ] },
   { h: "Who wins", team: true, p: [
     "Each station ranks the teams (1 is best, ties share a place). The ranks add up to points, and the **lowest points win**. With several rounds, each station counts all rounds together.",
@@ -2128,6 +2138,9 @@ function renderSections() {
   $("teams").hidden = $("setupCard").hidden = !(view === "local" || trainerOn());
   $("standCard").hidden = !(scoring || view === "pick");
   $("picker").hidden = view !== "pick";
+  // On a team phone, the team and session sit under the scores; the top card is the screen-lock reminder.
+  $("teamFoot").hidden = view !== "team";
+  if (view === "team") $("teamFoot").innerHTML = `<span class="note">${esc(state.teams[state.active].name)} · Session ${esc(eventLabel(eventId))}</span><button class="ghost" data-role="">Switch team</button>`;
   $("tools").hidden = trainerLocked() || !(view === "local" || view === "trainer" || (view === "missing" && live && getRole() === "trainer"));
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
@@ -2247,11 +2260,8 @@ document.addEventListener("input", e => {
 // It stays on while the workout clock runs (up to its end, or an hour), and the big screen always stays on.
 const AWAKE_MIN = 3;
 let wakeHeld = null, wakeAsking = false, lastTap = Date.now();
-function keepAwake() {
-  if (screenMode || Date.now() - lastTap < AWAKE_MIN * 60000) return true;
-  if (!(clockStart(state.round) > 0)) return false;
-  return elapsed(state.round) < (clockEnd() || 3600);
-}
+const clockKeepsAwake = () => clockStart(state.round) > 0 && elapsed(state.round) < (clockEnd() || 3600);
+const keepAwake = () => screenMode || Date.now() - lastTap < AWAKE_MIN * 60000 || clockKeepsAwake();
 async function wake() {
   if (!navigator.wakeLock || document.visibilityState !== "visible") return;
   if (!keepAwake()) { const h = wakeHeld; wakeHeld = null; if (h && !h.released) h.release().catch(() => {}); return; }
@@ -2260,7 +2270,24 @@ async function wake() {
   try { wakeHeld = await navigator.wakeLock.request("screen"); } catch {}
   wakeAsking = false;
 }
-for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { lastTap = Date.now(); wake(); }, true);
+// The reminder on a team phone: a bar that empties as the screen-on time runs out, full while the clock runs.
+function lockTick() {
+  const title = $("lockTitle"); if (!title) return;
+  const bar = $("lockBar"), fill = $("lockFill"), sub = $("lockSub");
+  if (!navigator.wakeLock) { title.textContent = "Lock your phone when you put it down"; bar.hidden = true; sub.textContent = ""; return; }
+  const left = Math.max(0, 1 - (Date.now() - lastTap) / (AWAKE_MIN * 60000)), workout = clockKeepsAwake();
+  bar.hidden = false; bar.classList.toggle("on", workout);
+  const w = (workout ? 100 : left * 100) + "%";
+  // A freshly drawn bar jumps straight to its width instead of sliding there.
+  if (!fill.style.width) { fill.style.transition = "none"; fill.style.width = w; void fill.offsetWidth; fill.style.transition = ""; }
+  else fill.style.width = w;
+  title.textContent = workout ? "Screen stays on during the workout" : "Lock your phone when you put it down";
+  sub.textContent = workout ? "When the workout is over, lock your phone before you put it down."
+    : left ? "The screen stays on while you're counting. When the bar runs out, your phone can lock itself again."
+    : "Your phone can lock itself now. Tap to keep the screen on.";
+}
+setInterval(lockTick, 1000);
+for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, () => { lastTap = Date.now(); wake(); lockTick(); }, true);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") lastTap = Date.now(); wake(); });
 setInterval(wake, 15000);
 wake();
