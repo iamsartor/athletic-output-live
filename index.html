@@ -612,7 +612,7 @@ async function connect() {
 // keeps it under its own anonymous sign-in (trainers/<uid>), so it asks once; a new PIN makes every phone ask again.
 // pinState: "check", "locked", "open" (unlocked, or rules without a PIN), "noauth" (anonymous sign-in is off).
 let pinState = "check", pinMsg = "";
-const trainerLocked = () => !!live && !screenMode && getRole() === "trainer" && (pinState === "check" || pinState === "locked");
+const trainerLocked = () => !!live && !screenMode && getRole() === "trainer" && (pinState === "check" || pinState === "locked" || pinState === "noauth");
 const trainerOn = () => view === "trainer" && !trainerLocked();
 async function checkPin(typed) {
   let uid;
@@ -627,9 +627,13 @@ async function checkPin(typed) {
     uid = auth.currentUser.uid;
   } catch { pinState = "noauth"; return renderAll(); }
   const ref = live.fb.ref(live.db, "trainers/" + uid);
+  // Right after signing in, the database may not have the sign-in yet and refuses the read, so it tries again.
+  // Refused every time means rules without a PIN: nothing to unlock.
   let have;
-  try { have = (await live.fb.get(ref)).val(); }
-  catch { pinState = "open"; return renderAll(); } // rules without a PIN: nothing to unlock
+  for (let i = 0; ; i++) {
+    try { have = (await live.fb.get(ref)).val(); break; }
+    catch { if (i >= 4) { pinState = "open"; return renderAll(); } await new Promise(r => setTimeout(r, 1000)); }
+  }
   if (typed === undefined && have == null) { pinState = "locked"; return renderAll(); }
   // A phone that was unlocked before opens right away; writing its PIN again checks it is still the current one.
   if (typed === undefined) { pinState = "open"; renderAll(); }
@@ -1864,7 +1868,9 @@ function renderLive() {
     if (document.activeElement?.id === "pinIn") return;
     el.innerHTML = `
       <div class="live-top"><h2>Trainer PIN</h2>${conn}</div>
-      ${pinState === "check" ? `<p class="note">Checking this phone…</p>` : `
+      ${pinState === "check" ? `<p class="note">Checking this phone…</p>`
+        : pinState === "noauth" ? `<p class="note">This phone can't sign in as trainer. In the Firebase console, Authentication > Anmeldemethode: switch on Anonym, then reload this page.</p>
+          <div class="actions"><button class="ghost" data-role="">I'm not the trainer</button></div>` : `
       <p class="note">Type the trainer PIN once on this phone to start sessions, run the clock and change teams. Athletes don't need it.</p>
       <form class="actions" id="pinForm"><input id="pinIn" class="date" type="password" inputmode="numeric" autocomplete="off" maxlength="30" aria-label="Trainer PIN" placeholder="PIN">
         <button class="solid">Unlock</button><button type="button" class="ghost" data-role="">I'm not the trainer</button></form>
@@ -1878,7 +1884,6 @@ function renderLive() {
     el.innerHTML = `
       <div class="live-top">${label}${conn}</div>
       <p class="note">Teams scan the QR code and pick their team once; their phone remembers it every week. You can fix any team's numbers below.</p>
-      ${pinState === "noauth" ? `<p class="note">Trainer sign-in is switched off in Firebase (Authentication, Anonymous), so trainer changes may not save.</p>` : ""}
       <div class="actions"><button class="solid" id="qrOpen">Show QR codes</button>
         <a class="ghost" href="${baseUrl()}?screen" target="_blank" rel="noopener">Open big screen</a>
         ${forcedEvent ? `<a class="ghost" href="${baseUrl()}">Back to today</a>` : ""}</div>${msg}`;
