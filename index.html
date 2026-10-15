@@ -511,7 +511,7 @@ function setWorkout(w) {
 // Live sessions. Each day gets its own session, named by date (2026-10-16), plus 2026-10-16-2 and so on
 // for extra sessions. "current" points at the newest one, so the plain link always opens today's session
 // and nothing ever needs resetting. Team ids carry over, so a phone remembers its team week to week.
-// view: "local" (one phone, like v1.0), "wait", "missing", "pick", "trainer", "team", "error".
+// view: "local" (one phone, like v1.0), "scan" (no join code yet), "wait", "missing", "pick", "trainer", "team", "error".
 const params = new URLSearchParams(location.search);
 const forcedEvent = (params.get("e") || "").replace(/[^0-9-]/g, "");
 const screenMode = params.has("screen"); // the big-screen leaderboard
@@ -526,6 +526,22 @@ const setRole = r => { try { r ? localStorage.setItem(ROLE_KEY, r) : localStorag
 if (params.get("team")) setRole(params.get("team"));
 // The trainer's own link (Trainer tools > Links) sets this phone to the trainer view, like a team link does.
 if (params.has("trainer")) setRole("trainer");
+// Join code. Each live session has its own short code (keys/<session>, only trainers can read it), and the
+// trainer's QR codes carry it (?k=). A phone that scans one keeps the code and registers with it under its own
+// anonymous sign-in (members/<session>/<uid>, with its team). Only registered phones count, only for their own
+// team, and only in the session that is live now, so the plain link or an old QR code can't change scores.
+// The code leaves the address bar right away, so a copied link doesn't carry it.
+const JOIN_KEY = "team-output-live-join";
+let joinCode = (() => { try { return localStorage.getItem(JOIN_KEY) || ""; } catch { return ""; } })();
+{
+  const k = (params.get("k") || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
+  if (params.has("k")) {
+    if (k) { joinCode = k; try { localStorage.setItem(JOIN_KEY, k); } catch {} }
+    params.delete("k");
+    const q = params.toString().replace(/=(&|$)/g, "$1");
+    history.replaceState(history.state, "", location.pathname + (q ? "?" + q : "") + location.hash);
+  }
+}
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 function eventLabel(id) {
   const day = new Date(id.slice(0, 10) + "T12:00").toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
@@ -653,25 +669,28 @@ async function connect() {
 let pinState = "check", pinMsg = "";
 const trainerLocked = () => !!live && !screenMode && getRole() === "trainer" && (pinState === "check" || pinState === "locked" || pinState === "noauth");
 const trainerOn = () => view === "trainer" && !trainerLocked();
+// Every live phone signs in anonymously (no account, nothing to type): the rules know trainers, registered
+// team phones and the big screen by that sign-in.
+let signing = null;
+const signIn = () => signing = signing || (async () => {
+  const a = await import(FB + "firebase-auth.js"), auth = a.getAuth(live.app);
+  live.auth = { a, auth };
+  await auth.authStateReady();
+  if (!auth.currentUser) await a.signInAnonymously(auth);
+  live.uid = auth.currentUser.uid; syncPresence();
+  return live.uid;
+})().catch(e => { signing = null; throw e; });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function checkPin(typed) {
   let uid;
-  try {
-    if (!live.auth) {
-      const a = await import(FB + "firebase-auth.js"), auth = a.getAuth(live.app);
-      live.auth = { a, auth };
-      await auth.authStateReady();
-    }
-    const { a, auth } = live.auth;
-    if (!auth.currentUser) await a.signInAnonymously(auth);
-    uid = auth.currentUser.uid;
-  } catch { pinState = "noauth"; return renderAll(); }
+  try { uid = await signIn(); } catch { pinState = "noauth"; return renderAll(); }
   const ref = live.fb.ref(live.db, "trainers/" + uid);
   // Right after signing in, the database may not have the sign-in yet and refuses the read, so it tries again.
   // Refused every time means rules without a PIN: nothing to unlock.
   let have;
   for (let i = 0; ; i++) {
     try { have = (await live.fb.get(ref)).val(); break; }
-    catch { if (i >= 4) { pinState = "open"; return renderAll(); } await new Promise(r => setTimeout(r, 1000)); }
+    catch { if (i >= 4) { pinState = "open"; return renderAll(); } await sleep(1000); }
   }
   if (typed === undefined && have == null) { pinState = "locked"; return renderAll(); }
   // A phone that was unlocked before opens right away; writing its PIN again checks it is still the current one.
@@ -685,6 +704,58 @@ async function checkPin(typed) {
   renderAll();
 }
 const path = (...parts) => live.fb.ref(live.db, ["events", eventId, ...parts].join("/"));
+
+// Joining with the code (see JOIN_KEY). joinState: "" (not yet), "check", "in" (registered), "open" (rules without
+// join codes: everyone counts, as before) or "bad" (no code, or the code of another session: scan again).
+let joinState = "", joinedFor = "", joinTeam = null;
+const joining = () => !!live && (screenMode || getRole() !== "trainer");
+// One join at a time, so a team picked while the first check runs is registered after it, in order.
+let joinChain = Promise.resolve();
+const joinEvent = () => joinChain = joinChain.then(joinStep).catch(() => {});
+async function joinStep() {
+  if (!joining() || !live.uid || !eventId || forcedEvent || !state.teams.length) return;
+  const team = screenMode ? "" : state.teams.some(t => t.id === getRole()) ? getRole() : "";
+  if (joinedFor === eventId && joinTeam === team) return;
+  const id = eventId, first = joinedFor !== id;
+  joinedFor = id; joinTeam = team;
+  const ref = live.fb.ref(live.db, `members/${id}/${live.uid}`);
+  if (first) {
+    joinState = "check";
+    // Rules without join codes refuse even reading this phone's own entry: then nothing needs a code.
+    // Right after signing in the database may refuse once or twice, so it tries again.
+    let rules = false;
+    for (let i = 0; i < 5 && !rules; i++) { try { await live.fb.get(ref); rules = true; } catch { if (i < 4) await sleep(1000); } }
+    if (id !== eventId) return;
+    if (!rules) { joinState = "open"; return renderAll(); }
+  }
+  if (joinState === "open") return;
+  let ok = !!joinCode;
+  if (ok) try { await live.fb.set(ref, { k: joinCode, t: team }); } catch { ok = false; }
+  if (id !== eventId || joinTeam !== team) return;
+  joinState = ok ? "in" : "bad";
+  if (!ok) { view = screenMode ? view : "scan"; }
+  renderAll();
+}
+// Taps count when this phone may write: the trainer, a phone on its own, or a registered phone while the
+// trainer hasn't locked the scores.
+const canCount = () => !live || view === "trainer" || ((joinState === "in" || joinState === "open") && !state.locked);
+const screenUrl = () => baseUrl() + "?screen" + (trainerKey ? "&k=" + trainerKey : "");
+const joinUrl = (code, team) => baseUrl() + ((team || code) ? "?" : "") + [team ? "team=" + team : "", code ? "k=" + code : ""].filter(Boolean).join("&");
+
+// The trainer phone makes the code of today's session if it has none yet, and keeps it in view for the QR codes.
+let trainerKey = "", keyFor = "", stopKey = null;
+function watchKey() {
+  const want = live && trainerOn() && eventId?.startsWith(today()) ? eventId : "";
+  if (want === keyFor) return;
+  if (stopKey) stopKey();
+  stopKey = null; trainerKey = ""; keyFor = want;
+  if (!want) return;
+  const ref = live.fb.ref(live.db, "keys/" + want);
+  stopKey = live.fb.onValue(ref, s => {
+    if (!s.val()) return live.fb.set(ref, rid(6)).catch(() => {});
+    trainerKey = s.val(); renderQrCard(); renderLinks();
+  }, () => { trainerKey = ""; renderQrCard(); });
+}
 
 // Phones online, for the trainer. While its page is open and connected, every phone keeps one small entry
 // under online/ (its session and what it is: team, picking a team, big screen or trainer), and the server
@@ -702,7 +773,7 @@ const presenceId = deviceId + "-" + rid(4);
 let presenceSent = "", seenSent = new Set(), online = null, seenCount = null, onlineFor = "", stopOnline = null;
 const presenceKind = () => screenMode ? "screen" : getRole() === "trainer" ? "trainer" : view === "team" ? "team" : "pick";
 function syncPresence() {
-  if (!live || !connected) return;
+  if (!live || !connected || !live.uid) return;
   const v = { e: eventId || "", k: presenceKind() }, sig = v.e + "/" + v.k;
   if (sig !== presenceSent) {
     presenceSent = sig;
@@ -749,6 +820,7 @@ async function initLive() {
   live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); if (connected) presenceSent = ""; renderLive(); });
   live.fb.onValue(live.fb.ref(live.db, ".info/serverTimeOffset"), s => { serverOffset = s.val() || 0; });
   if (getRole() === "trainer" && !screenMode) checkPin();
+  else signIn().then(joinEvent).catch(() => { joinState = "open"; liveMsg = "This phone couldn't sign in, so its taps may not count. Reload to try again."; renderAll(); });
   live.fb.onValue(live.fb.ref(live.db, "workouts"), s => {
     saved = {};
     for (const [id, j] of Object.entries(s.val() || {})) { const w = parseWorkout(j); if (w) saved[id] = { ...w, id }; }
@@ -774,7 +846,8 @@ function openEvent(id) {
   if (id === eventId) return;
   flush(); dropPending(); editing = null;
   if (stopEvent) stopEvent();
-  eventId = id; view = "wait"; renderAll();
+  eventId = id; view = "wait"; if (joinState === "bad") joinState = "";
+  renderAll();
   stopEvent = live.fb.onValue(path(), snap => applyRemote(snap.val()),
     () => { view = "error"; liveMsg = "This session can't be opened. Check the connection and reload."; renderAll(); });
 }
@@ -786,6 +859,7 @@ function applyRemote(v) {
   // Sessions from before v2 have no workout saved and were always Team Output.
   setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
   liveClocks = v.clock || {};
+  state.locked = v.locked === true;
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
   state.teams = ids.map(id => ({ id, name: v.teams[id].name, order: v.teams[id].order, ...(v.teams[id].size ? { size: v.teams[id].size } : {}), ...(Number.isInteger(v.teams[id].start) ? { start: v.teams[id].start } : {}), counts: roundList().map(r => ({ ...(v.counts?.[id]?.["r" + r] || {}) })) }));
   // Taps not yet sent win over what the server has, so the counter never jumps back.
@@ -807,11 +881,13 @@ function applyRemote(v) {
   else if (role === "trainer") view = "trainer";
   else if (mine >= 0) { view = "team"; state.active = mine; }
   else view = "pick";
+  if (!screenMode && role !== "trainer" && !forcedEvent && (joinState === "bad" || (!joinCode && joinState !== "open" && joinState !== "check"))) view = "scan";
   state.active = Math.min(state.active, state.teams.length - 1);
   if (!editing) renderBoard();
   renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
   if (!(document.activeElement && (document.activeElement.dataset.name !== undefined || document.activeElement.dataset.size !== undefined))) renderSetup();
   save();
+  joinEvent();
 }
 
 // Live counts are sent about a second after the last tap, so ten quick taps become one write.
@@ -858,12 +934,14 @@ addEventListener("pageshow", e => { if (e.persisted) location.reload(); });
 
 // Every change goes through these, so the same buttons work on one phone or in a live session.
 function setValue(i, key, v) {
+  if (!canCount()) return;
   v = Math.max(0, Math.min(100000, Math.round(v) || 0));
   if (live) return queue(i, key, v);
   state.teams[i].counts[state.round][key] = v;
 }
 // A tap adds to the count (or takes away, never below 0), so taps from two phones add up.
 function addValue(i, key, d) {
+  if (!canCount()) return;
   const cur = val(state.teams[i], state.round, key);
   d = Math.max(-cur, Math.min(100000 - cur, Math.round(d) || 0));
   if (!d) return;
@@ -898,6 +976,8 @@ function stationAction(i, act, sid) {
   } else if (act === "cap") { setValue(i, sid + "_c", 1); setValue(i, sid + "_t", s.cap); }
   else if (act === "clear") { setValue(i, sid + "_t", 0); setValue(i, sid + "_c", 0); setValue(i, sid + "_r", 0); }
 }
+// The trainer can lock the scores (end of class): team phones can't change them until unlocked.
+const setLocked = on => live.fb.set(path("locked"), on ? true : null);
 function rename(i, name) {
   if (live) return live.fb.set(path("teams", state.teams[i].id, "name"), name.slice(0, 24));
   state.teams[i].name = name;
@@ -978,7 +1058,7 @@ async function deleteSession() {
   const id = eventId; dropPending(); clearTimeout(flushTimer);
   await live.fb.update(live.fb.ref(live.db), { ["events/" + id]: null, ...(latest === id ? { current: null } : {}) });
   // Separate, so deleting still works with rules from before seen/ existed.
-  live.fb.remove(live.fb.ref(live.db, "seen/" + id)).catch(() => {});
+  for (const p of ["seen/", "keys/", "members/"]) live.fb.remove(live.fb.ref(live.db, p + id)).catch(() => {});
   sessionList = null; loadSessions();
   if (forcedEvent) location.href = baseUrl(); else { latest = latest === id ? null : latest; eventId = null; followToday(); }
 }
@@ -1475,7 +1555,7 @@ function renderQrCard() {
   if (el.hidden) return;
   const t = state.teams.find(t => t.id === qrFor);
   if (qrFor && !t) qrFor = "";
-  const url = baseUrl() + (t ? "?team=" + t.id : "");
+  const url = joinUrl(trainerKey, t ? t.id : "");
   const stamp = url + "|" + state.teams.map(t => t.id + t.name).join();
   if (el.dataset.stamp === stamp) return;
   el.dataset.stamp = stamp;
@@ -1484,11 +1564,13 @@ function renderQrCard() {
     <div class="qr-pick">${[["", "Everyone"], ...state.teams.map(t => [t.id, t.name])].map(([id, n]) =>
       `<button data-qr="${id}" aria-pressed="${(t ? t.id : "") === id}">${esc(n)}</button>`).join("")}</div>
     <div class="qr big" id="qrBox"></div>
-    <p class="note center">${t ? `Scan to score for <b>${esc(t.name)}</b>. The phone remembers the team every week.` : "Scan to join today's session, then pick your team."}</p>`;
+    <p class="note center">${t ? `Scan to score for <b>${esc(t.name)}</b>.` : "Scan to join this session, then pick your team."} The code only works for this session.</p>`;
   drawQR($("qrBox"), url);
 }
 
 // ---- Big screen ----
+// Its QR code carries the join code from the big-screen link, once the screen has joined with it.
+const screenJoin = () => view !== "screen" ? "" : joinState === "in" ? joinUrl(joinCode) : joinState === "open" ? baseUrl() : "";
 // ?screen shows today's standings large for a TV or laptop, with the clock and a QR code to join.
 // It follows the live session like a team phone but can't change anything.
 // A thin bar under an EMOM's minutes on the big screen: done, missed, still to come.
@@ -1664,10 +1746,10 @@ function renderScreen() {
       ${W.slot ? `<div class="scr-clock" data-slotclock>${slotClockHtml()}</div>` : timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
     ${W.stations.filter(hasNowNext).map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
     ${showLanes() ? `<div class="scr-main"><div class="rot-board">${swimlaneHtml()}</div>
-      ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : ""}
+      ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : ""}
     ${showLanes() ? "" : W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
     ${showLanes() ? "" : W.slot && !W.ranked ? `<div class="scr-main"><div class="rot-board" data-rotboard>${rotBoardHtml()}</div>
-      ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
+      ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
     <div class="scr-main">
       <div class="tbl-wrap"><table class="scr-tbl">
         <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
@@ -1677,9 +1759,9 @@ function renderScreen() {
             ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
             ${n > 1 ? `<td class="pts">${any ? pts : "–"}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
-      ${view === "screen" ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
+      ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
     </div>`}`;
-  if (view === "screen") drawQR($("scrQr"), baseUrl());
+  if (screenJoin()) drawQR($("scrQr"), screenJoin());
 }
 
 // ---- Glitter ----
@@ -2021,7 +2103,7 @@ function renderWorkout(force) {
 
 function renderLive() {
   // Every change of session, role or connection passes through here, so the phone's online entry follows it.
-  syncPresence(); watchOnline();
+  syncPresence(); watchOnline(); watchKey();
   if (screenMode) { $("live").hidden = true; return; }
   const el = $("live"), msg = liveMsg ? `<p class="note">${esc(liveMsg)}</p>` : "";
   const conn = `<span class="conn${connected ? "" : " off"}">${connected ? "Live" : "Offline, will sync"}</span>`;
@@ -2051,18 +2133,26 @@ function renderLive() {
   } else if (view === "trainer") {
     el.innerHTML = `
       <div class="live-top">${label}${conn}</div>
-      <p class="note">Teams scan the QR code and pick their team once; their phone remembers it every week. You can fix any team's numbers below.</p>
+      <p class="note">Teams scan this session's QR code to join; only phones that scanned it can count. Their phone remembers its team. You can fix any team's numbers below.</p>
       <p class="note" id="onlineNow" aria-live="polite"></p>
+      ${state.locked ? `<p class="note"><b>Scores are locked.</b> Team phones can't change them; you still can.</p>` : ""}
       <div class="actions"><button class="solid" id="qrOpen">Show QR codes</button>
-        <a class="ghost" href="${baseUrl()}?screen" target="_blank" rel="noopener">Open big screen</a>
+        <a class="ghost" href="${screenUrl()}" target="_blank" rel="noopener">Open big screen</a>
+        <button class="ghost" id="lockScores">${state.locked ? "Unlock scores" : "Lock scores"}</button>
         ${forcedEvent ? `<a class="ghost" href="${baseUrl()}">Back to today</a>` : ""}</div>${msg}`;
   } else if (view === "team") {
     el.setAttribute("style", tc(state.active));
     el.innerHTML = `
       <div data-lock><div class="live-top"><span class="lock-title" data-lt></span>${conn}</div>
       <div class="lock-bar" data-lb><span></span></div>
-      <p class="note" data-ls></p></div>${msg}`;
+      <p class="note" data-ls></p></div>${state.locked ? `<p class="note"><b>The trainer has locked the scores.</b></p>` : ""}${msg}`;
     lockTick();
+  } else if (view === "scan") {
+    el.innerHTML = `
+      <h2>Scan the QR code to join</h2>
+      <p class="note">${joinCode ? "This phone's code is from an earlier session. " : ""}Scan the QR code the trainer shows at the gym. Each session has its own code, so only people in the class can count.</p>
+      <p class="note trainer-entry">${trainerEntry()}</p>
+      <div class="actions"><a class="ghost" href="${baseUrl()}?local">Use this phone on its own</a></div>${msg}`;
   } else if (view === "pick") {
     el.innerHTML = `<div class="live-top">${label}${conn}</div>${msg}`;
   } else if (view === "wait") {
@@ -2090,7 +2180,7 @@ function renderLive() {
 // **bold** is the only markup.
 const GUIDE = [
   { h: "Joining", team: true, p: [
-    "Scan the QR code the trainer shows (or open the link) and pick your team. Your phone remembers it every week.",
+    "Scan the QR code the trainer shows and pick your team. Each session has its own code, so scan it again at every class; your phone remembers your team.",
     "Picked the wrong team? Tap **Switch team** under the scores.",
     "Want it like an app, without the address bar? Android: browser menu > **Install app** (or Add to Home screen). iPhone: Safari **Share > Add to Home Screen**." ] },
   { h: "Counting", team: true, p: [
@@ -2113,8 +2203,9 @@ const GUIDE = [
     "Your own trainer link (**Trainer tools > Links > Send trainer link**, ends in ?trainer) opens the trainer view straight away; bookmark it or add it to the home screen. Without it, the small **Trainer?** link under the teams asks before switching.",
     "The first time on a phone, the trainer view asks for the **trainer PIN**. The phone remembers it; when the PIN is changed, every trainer phone asks again. Athletes and the big screen never need it.",
     "On the trainer phone, pick today's workout and tap **Start today's session**. Each day gets its own session; teams and their names carry over from last time.",
-    "Tap **Show QR codes**: the Everyone code lets each phone pick its team, a team's code sets the team directly. Teams that can't scan: send a link from **Trainer tools > Links**.",
-    "**Open big screen** on a TV or laptop for live standings, the clock, Now / Next and a QR code to join. It has no buttons, so it can't be changed by accident.",
+    "Tap **Show QR codes**: the Everyone code lets each phone pick its team, a team's code sets the team directly. Each session has its own code: only phones that scanned it can count, only for their own team, and only while that session is live. The plain link only says to scan the QR code.",
+    "**Open big screen** on a TV or laptop for live standings, the clock, Now / Next and the QR code to join. It has no buttons, so it can't be changed by accident. Its link carries the join code: send it only to the screen.",
+    "**Lock scores** at the end of class: team phones can't change any number until you unlock. Starting a new session closes the old one by itself.",
     "In rotations (Team Output blocks, race sim) the big screen shows **where each team goes** before the clock starts, takes on its **rest colour** while everyone rests, and flashes a strong colour with **Go!** when work starts, fading back to normal." ] },
   { h: "The clock", p: [
     "Timed workouts (for time, AMRAP, EMOM) have a shared clock. **Start clock** on the trainer phone; every phone and the big screen follow it.",
@@ -2151,18 +2242,15 @@ function renderHelp() {
   if ($("helpCard").dataset.who !== String(all)) { $("helpCard").innerHTML = `<h2>How it works</h2>${html}`; $("helpCard").dataset.who = String(all); }
 }
 
-// Trainer tools: links for anyone who can't scan the QR code, an extra session, and switching role.
+// Trainer tools: the big-screen and trainer links, an extra session, and switching role.
 function renderLinks() {
   const el = $("linksCard");
   el.hidden = screenMode || !trainerOn() || !eventId.startsWith(today());
   if (el.hidden) return;
   el.innerHTML = `
     <h2>Links</h2>
-    <p class="note">For anyone who can't scan the QR code. A team's own link sets its phone to that team.</p>
-    ${state.teams.map((t, i) => `<div class="link-row" style="${tc(i)}"><span class="dot"></span><span class="n">${esc(t.name)}</span>
-      <button class="ghost" data-share="${t.id}" data-label="Send link">Send link</button></div>`).join("")}
-    <div class="actions"><button class="ghost" data-share="" data-label="Send link for everyone">Send link for everyone</button>
-      <button class="ghost" id="screenShare" data-label="Send big-screen link">Send big-screen link</button></div>
+    <p class="note">Athletes join only with this session's QR code. The big-screen link carries the code too, so send it only to the screen.</p>
+    <div class="actions"><button class="ghost" id="screenShare" data-label="Send big-screen link">Send big-screen link</button></div>
     <p class="note">Your own trainer link opens this view straight away. Keep it to yourself, bookmark it or add it to the home screen.</p>
     <div class="actions"><button class="ghost" id="trainerShare" data-label="Send trainer link">Send trainer link</button></div>
     <h3 class="sub">This phone</h3>
@@ -2244,11 +2332,13 @@ document.addEventListener("click", e => {
   else if (b.dataset.remove) { removeTeam(+b.dataset.remove); renderSetup(); }
   else if (b.dataset.role !== undefined) {
     setRole(b.dataset.role); editing = null; trainerAsk = false;
+    // A phone without a join code isn't connected: becoming the trainer starts afresh.
+    if (!live && view === "scan") { location.reload(); return; }
     if (b.dataset.role === "trainer" && live && pinState === "check") checkPin();
     const i = state.teams.findIndex(t => t.id === b.dataset.role);
     if (view !== "missing") view = b.dataset.role === "trainer" ? "trainer" : i >= 0 ? "team" : "pick";
     if (i >= 0) state.active = i;
-    window.scrollTo(0, 0); renderSetup();
+    window.scrollTo(0, 0); renderSetup(); joinEvent();
   }
   else if (b.dataset.share !== undefined) {
     return share(baseUrl() + (b.dataset.share ? "?team=" + b.dataset.share : ""), b);
@@ -2259,7 +2349,8 @@ document.addEventListener("click", e => {
   else if (b.dataset.qr !== undefined) { qrFor = b.dataset.qr; return renderQrCard(); }
   else if (b.id === "qrOpen") { qrFor = ""; renderQrCard(); $("qrCard").scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   else if (b.id === "qrClose") { qrFor = null; return renderQrCard(); }
-  else if (b.id === "screenShare") return share(baseUrl() + "?screen", b);
+  else if (b.id === "screenShare") return share(screenUrl(), b);
+  else if (b.id === "lockScores") { setLocked(!state.locked); return; }
   else if (b.id === "trainerShare") return share(baseUrl() + "?trainer", b);
   else if (b.id === "trainerAsk" || b.id === "trainerNo") { trainerAsk = b.id === "trainerAsk"; }
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
@@ -2374,7 +2465,10 @@ document.addEventListener("visibilitychange", () => { if (document.visibilitySta
 setInterval(wake, 15000);
 wake();
 
+// A phone that has no join code and isn't the trainer or the big screen doesn't connect at all: it only says to
+// scan the QR code. That keeps visitors with the plain link out of the free plan's 100 connections.
+if (view !== "local" && !screenMode && getRole() !== "trainer" && !joinCode) view = "scan";
 renderSetup(); renderAll();
-if (view !== "local") initLive();
+if (view !== "local" && view !== "scan") initLive();
 </script>
 </body></html>
