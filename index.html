@@ -439,19 +439,22 @@ function normWorkout(w) {
   if (!w || typeof w !== "object" || !Array.isArray(w.stations)) return null;
   // Workouts come from pasted text and the shared database, so their text never keeps < or >.
   const txt = (x, n) => String(x).replace(/[<>]/g, "").slice(0, n);
+  // Saved workouts keep their times as seconds (30), pasted ones are checked "m:ss" strings ("0:30").
+  // So a plain number here is seconds: reading 30 as minutes turned a saved 0:30 swap into 10:00.
+  const sec = x => typeof x === "number" ? x : parseCap(x);
   const int = (x, lo, hi, d) => Number.isFinite(+x) && x !== null && x !== "" ? Math.max(lo, Math.min(hi, Math.round(+x))) : d;
   const stations = w.stations.filter(s => s && /^[a-z0-9]{1,8}$/.test(s.id) && TYPES[s.type || "count"]).map(s => {
     const steps = Array.isArray(s.steps) && s.steps.length ? s.steps.slice(0, 3).map(n => int(n, 1, 1000, 1)) : [1, 5, 10];
     const o = { id: s.id, name: txt(s.name || s.id, 30), type: s.type || "count", info: txt(s.info || "", 120), steps };
     if (o.type === "count") o.unit = txt(s.unit || "reps", 12);
-    if (o.type === "time" || o.type === "amrap") o.cap = int(s.cap === undefined ? 0 : parseCap(s.cap), 0, 36000, 0);
+    if (o.type === "time" || o.type === "amrap") o.cap = int(s.cap === undefined ? 0 : sec(s.cap), 0, 36000, 0);
     if (o.type === "time" && s.totalReps) o.totalReps = int(s.totalReps, 1, 100000, 0);
     // A team goal ("120 team reps", "2000 m"): teams count towards it and the time is taken when they reach it.
     if (o.type === "time" && s.target) { o.target = int(s.target, 1, 100000, 0); o.unit = txt(s.unit || "reps", 12); o.totalReps = o.totalReps || o.target; }
     if (o.type === "amrap" && s.repsPerRound) o.repsPerRound = int(s.repsPerRound, 1, 10000, 0);
-    if (w.slot !== undefined && s.time !== undefined) o.time = int(parseCap(s.time), 10, 3600, 0) || undefined;
+    if (w.slot !== undefined && s.time !== undefined) o.time = int(sec(s.time), 10, 3600, 0) || undefined;
     // Intervals inside a station of a rotation: "work": "1:30", "switch": "0:30" (Erg: swap machines every 2:00).
-    if (w.slot !== undefined && s.work !== undefined && int(parseCap(s.work), 5, 3600, 0)) { o.work = int(parseCap(s.work), 5, 3600, 0); o.switch = int(s.switch === undefined ? 0 : parseCap(s.switch), 0, 600, 0); }
+    if (w.slot !== undefined && s.work !== undefined && int(sec(s.work), 5, 3600, 0)) { o.work = int(sec(s.work), 5, 3600, 0); o.switch = int(s.switch === undefined ? 0 : sec(s.switch), 0, 600, 0); }
     if (o.type === "emom") {
       o.minutes = int(s.minutes, 1, 60, 10);
       o.measure = s.measure === "done" ? "done" : "reps";
@@ -465,9 +468,9 @@ function normWorkout(w) {
     id: String(w.id || "custom").replace(/[^a-z0-9-]/gi, "").slice(0, 20) || "custom",
     name: txt(w.name || "Workout", 40), place: txt(w.place || "", 40),
     teams: int(w.teams, 1, 20, 4), teamSize: int(w.teamSize, 1, 20, 3), rounds: int(w.rounds, 1, 10, 1), stations,
-    ...(w.slot !== undefined && int(parseCap(w.slot), 30, 3600, 0) ? { slot: int(parseCap(w.slot), 30, 3600, 0), ranked: w.ranked === true } : {}),
+    ...(w.slot !== undefined && int(sec(w.slot), 30, 3600, 0) ? { slot: int(sec(w.slot), 30, 3600, 0), ranked: w.ranked === true } : {}),
     // A clock for workouts that don't need one otherwise: "timer": "5:00" counts down, true counts up.
-    ...(w.timer !== undefined && w.timer !== false && !w.slot ? { timer: w.timer === true ? 0 : int(parseCap(w.timer), 10, 3600, 0) } : {}),
+    ...(w.timer !== undefined && w.timer !== false && !w.slot ? { timer: w.timer === true || w.timer === 0 ? 0 : int(sec(w.timer), 10, 3600, 0) } : {}),
   };
 }
 const parseWorkout = s => { try { return normWorkout(JSON.parse(s)); } catch { return null; } };
@@ -1240,10 +1243,10 @@ function rotHtml(i) {
   const a = rotAt(i), pz = paused(state.round) ? " · paused" : "";
   if (a.phase === "done") return `<div class="nn-row"><span class="nn-l">Done</span><b>All ${W.stations.length} stations finished</b></div>`;
   if (a.phase === "move") return `<div class="nn-row"><span class="nn-l">Move</span><b>Go to ${esc(a.next)}</b><span class="nn-t">${fmt(Math.ceil(a.left))}${pz}</span></div>`;
-  if (a.phase === "switch") return `<div class="nn-row"><span class="nn-l">Switch</span><b>${esc(a.s.name)} · next machine</b><span class="nn-t">${fmt(Math.ceil(a.left))}${pz}</span></div>
+  if (a.phase === "switch") return `<div class="nn-row"><span class="nn-l">Swap</span><b>${esc(a.s.name)} · swap machines</b><span class="nn-t">${fmt(Math.ceil(a.left))}${pz}</span></div>
     <div class="nn-row next"><span class="nn-l">Next</span><span>Part ${a.part + 1} of ${a.parts}</span></div>`;
   if (a.part) return `<div class="nn-row"><span class="nn-l">Now</span><b>${esc(a.s.name)} · part ${a.part} of ${a.parts}</b><span class="nn-t">${fmt(Math.ceil(a.left))} left${pz}</span></div>
-    <div class="nn-row next"><span class="nn-l">Next</span><span>${a.part < a.parts ? "Switch machines" : esc(a.next)}</span></div>`;
+    <div class="nn-row next"><span class="nn-l">Next</span><span>${a.part < a.parts ? "Swap machines" : esc(a.next)}</span></div>`;
   return `<div class="nn-row"><span class="nn-l">${a.phase === "wait" ? "Start" : "Now"}</span><b>${esc(a.s.name)}</b><span class="nn-t">${a.phase === "wait" ? "waiting for the clock" : fmt(Math.ceil(a.left)) + " left" + pz}</span></div>
     <div class="nn-row next"><span class="nn-l">Next</span><span>${esc(a.next)}</span></div>`;
 }
@@ -1643,7 +1646,7 @@ function rotStripHtml() {
   const at = state.teams.map((t, i) => [t, i, rotAt(i)]);
   return W.stations.map((s, p) => {
     const here = at.filter(([, , a]) => a.p === p && a.phase !== "done" && a.phase !== "wait"), a = here[0]?.[2];
-    const ph = !a ? "" : a.phase === "move" ? `Move ${fmt(Math.ceil(a.left))}` : a.phase === "switch" ? `Switch ${fmt(Math.ceil(a.left))}`
+    const ph = !a ? "" : a.phase === "move" ? `Move ${fmt(Math.ceil(a.left))}` : a.phase === "switch" ? `Swap ${fmt(Math.ceil(a.left))}`
       : `${fmt(Math.ceil(a.left))}${a.part ? ` <small>part ${a.part}/${a.parts}</small>` : ""}`;
     return `<div class="strip-cell${a && (a.phase === "move" || a.phase === "switch") ? " moving" : ""}"><b>${esc(s.name)}</b>${here.map(([t, i]) =>
       `<span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>`).join("")}<span class="strip-t">${ph}</span></div>`;
@@ -1684,8 +1687,8 @@ function bigInfo() {
     if (a.phase === "wait") return { clock: fmt(W.slot), cl: "Waiting for the clock", l: "Start at", now: a.s.name, next: a.next };
     if (a.phase === "done") return { clock: "0:00", cl: "Finished", l: "Done", now: `All ${W.stations.length} stations`, next: "" };
     if (a.phase === "move") return { clock: left, cl, l: "Move to", now: a.next, next: "", rest: true };
-    if (a.phase === "switch") return { clock: left, cl, l: "Switch", now: a.s.name, sub: "Next machine", next: `Part ${a.part + 1} of ${a.parts}`, rest: true };
-    return { clock: left, cl, l: "Now", now: a.s.name, sub: a.part ? `Part ${a.part} of ${a.parts}` : "", next: a.part && a.part < a.parts ? "Switch machines" : a.next };
+    if (a.phase === "switch") return { clock: left, cl, l: "Swap", now: a.s.name, sub: "Swap machines", next: `Part ${a.part + 1} of ${a.parts}`, rest: true };
+    return { clock: left, cl, l: "Now", now: a.s.name, sub: a.part ? `Part ${a.part} of ${a.parts}` : "", next: a.part && a.part < a.parts ? "Swap machines" : a.next };
   }
   const clock = timed() ? clockText().replace(/ · paused$/, "").replace(/ left$/, "") : "", end = clockEnd();
   const cl = !timed() ? "" : pz ? "Paused" : !clockStart(r) ? "Waiting for the clock" : timerDone() ? "" : (W.timer || W.stations.every(s => s.type === "amrap")) && end ? "Left" : "Clock";
@@ -2057,6 +2060,15 @@ async function saveChecked(btn) {
   catch { wMsg = "Couldn't save it. Check the connection and try again."; }
   renderWorkout(true);
 }
+// A workout as text to paste back: its times written "m:ss" again, as the Check asks for.
+function pasteable(w) {
+  const t = x => `${Math.floor(x / 60)}:${String(x % 60).padStart(2, "0")}`;
+  const o = JSON.parse(JSON.stringify(w));
+  if (o.slot) o.slot = t(o.slot);
+  if (o.timer !== undefined) o.timer = o.timer ? t(o.timer) : true;
+  o.stations.forEach(s => { for (const k of ["cap", "time", "work", "switch"]) if (typeof s[k] === "number") s[k] = t(s[k]); if (s.cap === "0:00") delete s.cap; });
+  return o;
+}
 async function copyText(text, btn) {
   try { await navigator.clipboard.writeText(text); btn.textContent = "Copied"; }
   catch { btn.textContent = "Couldn't copy"; }
@@ -2223,7 +2235,7 @@ const GUIDE = [
     "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
     "Starts are spread out by themselves (in a race sim half on runs and half on stations). To change one, **Trainer tools > Start stations**: tap **Move** on a team, then the station. A free station moves it there, a taken one swaps the two.",
     "Once the clock runs, each phone shows **Now** and **Next** for that person, says **Go to** the next station when the station time is up, and flashes the station tiles at each switch. The big screen shows who's where and when the next switch is. There's no ranking.",
-    "Team Output works the same way with **ranked** on: every team moves on every 6:00, each round is a whole rotation, and the big screen keeps the standings, with a big countdown to the next switch and each station's own timer (the same as on the phones). A station with **work** and **switch** (the Erg) shows its own parts: **part 2 of 3**, then **Switch** to the next machine." ] },
+    "Team Output works the same way with **ranked** on: every team moves on every 6:00, each round is a whole rotation, and the big screen keeps the standings, with a big countdown to the next switch and each station's own timer (the same as on the phones). A station with **work** and **switch** (the Erg) shows its own parts: **part 2 of 3**, then **Swap** to the next machine." ] },
   { h: "Teams", p: [
     "**Trainer tools > Teams**: rename, add or remove teams, or reset all counts. Renamed teams keep their bests.",
     "Short on people? Set each team's athletes there (like **2 athl.**). The standings then show the output **each** athlete did next to the totals; the ranking still uses the totals. It's set per session." ] },
@@ -2385,7 +2397,7 @@ document.addEventListener("click", e => {
   else if (b.id === "wDelYes") { wConfirm = null; deleteWorkout(b.dataset.w); return renderWorkout(true); }
   else if (b.id === "wNo") { wConfirm = null; return renderWorkout(true); }
   else if (b.dataset.wdel) { wConfirm = { kind: "del", id: b.dataset.wdel }; return renderWorkout(true); }
-  else if (b.dataset.wcopy) return copyText(JSON.stringify(byId(b.dataset.wcopy), null, 2), b);
+  else if (b.dataset.wcopy) return copyText(JSON.stringify(pasteable(byId(b.dataset.wcopy)), null, 2), b);
   else if (b.id === "wPrompt") return copyText(LLM_PROMPT, b);
   else if (b.id === "wCheck") { pasteText = $("wPaste").value; pasteCheck = checkWorkout(pasteText); wMsg = ""; return renderWorkout(true); }
   else if (b.id === "wSave") return saveChecked(b);
