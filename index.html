@@ -1605,9 +1605,10 @@ function beatRowHtml(x, screen) {
 function beatHead(c) {
   return c.won ? `Beaten! ${pctText(c.pct)}` : pctText(c.pct);
 }
+// Athletes' phones don't show it (Michael 2026-11-03): only the big screen and the trainer phone.
 function renderBeat() {
   const el = $("beatCard"), c = challenge();
-  el.hidden = screenMode || !c || !c.rows.length || !["trainer", "team", "pick"].includes(view) || trainerLocked();
+  el.hidden = screenMode || !c || !c.rows.length || view !== "trainer" || trainerLocked();
   if (!el.hidden) el.innerHTML = `
     <div class="beat-top"><h2>Group challenge</h2><span class="note">vs ${esc(beatLabel(c.id))}</span></div>
     <div class="beat-pct">${esc(beatHead(c))}<small>of ${esc(shortDate(c.id))} · ${c.rows.filter(x => x.won).length} of ${c.rows.length} stations beaten</small></div>
@@ -1632,7 +1633,7 @@ function renderBeatSet() {
   const pick = beatPick || opts?.find(o => o.ev.w.id === W.id)?.ev.id || opts?.[0]?.ev.id || "";
   el.innerHTML = `
     <h2>Group challenge</h2>
-    <p class="note">Repeating a workout? Pick the earlier session: every phone and the big screen show all teams' totals today against that day's, station by station.</p>
+    <p class="note">Repeating a workout? Pick the earlier session: the big screen and this phone show all teams' totals today against that day's, station by station. Athletes' phones don't show it.</p>
     ${beatId ? `<div class="actions"><span>Target: <b>${esc(beatLabel(beatId))}</b>${c && c.missing ? " (that session is gone)" : c && !c.rows.length ? " (no stations in common with this workout)" : ""}</span>
       <button class="ghost" id="beatOff">Remove</button></div>` : ""}
     ${opts === null ? `<p class="note">Loading sessions…</p>` : !opts.length ? `<p class="note">No earlier session with scores on these stations yet.</p>` : `
@@ -1943,9 +1944,9 @@ function celebrate() {
   const fresh = stamp === celebStamp ? [...now].filter(k => !celebSeen.has(k)) : [];
   celebStamp = stamp; celebSeen = now;
   const mine = view === "team" ? state.teams[state.active]?.id : null;
-  const hits = fresh.map(k => k.split("|")).filter(([tid]) => !mine || tid === mine || tid === "group");
+  const hits = fresh.map(k => k.split("|")).filter(([tid]) => !mine || tid === mine);
   if (!hits.length) return;
-  // The whole group beating an earlier session goes off on every phone and the big screen.
+  // The whole group beating an earlier session goes off on the big screen and the trainer phone.
   const g = hits.find(x => x[1] === "all") || hits.find(x => x[0] === "group");
   if (g) return glitter(g[1] === "all" ? `Group beat ${shortDate(beatId)}!` : `${W.stations.find(s => s.id === g[1])?.name || ""} beaten!`, true);
   const [tid, sid, kind] = hits.find(x => x[2] === "Record") || hits[0];
@@ -2352,7 +2353,7 @@ const GUIDE = [
   { h: "Sessions and history", p: [
     "**Trainer tools > Sessions**: switch everyone to another of today's sessions, open a past one, or add a past date to type in results from paper. **Delete this session** is there too. A second class on the same day: **Trainer tools > Links > Start extra session**.",
     "**Trainer tools > History**: the winners of past sessions.",
-    "**Trainer tools > Group challenge**: repeating a workout? Pick the earlier session and every phone and the big screen show the whole group's totals against that day's, station by station, with how far the group has got. Beating a station, and then the whole day, sets off the glitter everywhere." ] },
+    "**Trainer tools > Group challenge**: repeating a workout? Pick the earlier session and the big screen (and your phone) show the whole group's totals against that day's, station by station, with how far the group has got. Beating a station, and then the whole day, sets off the glitter on the big screen. Athletes' phones don't show it." ] },
   { h: "Race simulation", p: [
     "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
     "Starts are spread out by themselves (in a race sim half on runs and half on stations). To change one, **Trainer tools > Start stations**: tap **Move** on a team, then the station. A free station moves it there, a taken one swaps the two.",
