@@ -146,6 +146,11 @@ td .avg { display: block; font-size: .7rem; color: var(--muted); white-space: no
 .pick .dot, .link-row .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); flex: 0 0 auto; }
 .link-row { display: flex; align-items: center; gap: 8px; }
 .link-row span.n { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tidy-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line, rgba(127,127,127,.2)); cursor: pointer; }
+.tidy-row input { width: 20px; height: 20px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--accent); }
+.tidy-row .t { flex: 1; min-width: 0; }
+.tidy-row .t b { display: block; }
+.tidy-row.gone .t b { text-decoration: line-through; color: var(--muted); }
 a.ghost, a.solid { color: inherit; text-decoration: none; display: inline-block; }
 a.solid { color: var(--accent-fg); }
 h3.sub { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 6px 0 0; }
@@ -1093,6 +1098,53 @@ async function deleteSession() {
   for (const p of ["seen/", "keys/", "members/"]) live.fb.remove(live.fb.ref(live.db, p + id)).catch(() => {});
   sessionList = null; loadSessions();
   if (forcedEvent) location.href = baseUrl(); else { latest = latest === id ? null : latest; eventId = null; followToday(); }
+}
+
+// ---- Tidy up: tick the sessions to keep, delete the rest in one go ----
+// tidyKeep is null while the list is closed. The live session and the one on screen are always kept.
+let tidyKeep = null, tidyAsk = false, tidyMsg = "";
+const tidyLocked = id => id === latest || id === eventId;
+function tidySummary(id) {
+  const ev = pastSession(id); if (!ev) return "empty";
+  const totals = ev.w.stations.filter(groupable).map(s => [s, groupSum(s, ev.teams, ev.w)]).filter(([, n]) => n);
+  const scored = ev.teams.some(t => t.counts.some(c => Object.values(c).some(x => x)));
+  return `${ev.w.name} · ${ev.teams.length} teams · ${totals.length ? totals.map(([s, n]) => `${s.name} ${n} ${groupUnit(s)}`).join(", ") : scored ? "has scores" : "no scores"}`;
+}
+const tidyDoomed = () => (sessionList || []).filter(id => !tidyLocked(id) && !tidyKeep.has(id));
+// Saves every session in the database as one JSON file on this phone, before anything is deleted.
+function tidyBackup() {
+  const blob = new Blob([JSON.stringify({ saved: new Date().toISOString(), events: allEvents || {} }, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `team-output-backup-${today()}.json`;
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  tidyMsg = "Backup saved to this phone's downloads.";
+}
+async function tidyDelete(btn) {
+  const ids = tidyDoomed(); if (!ids.length) return;
+  btn.disabled = true; btn.textContent = "Deleting…";
+  try {
+    await live.fb.update(live.fb.ref(live.db), Object.fromEntries(ids.map(id => ["events/" + id, null])));
+    // Separate, so deleting still works with rules from before seen/ existed.
+    for (const id of ids) for (const p of ["seen/", "keys/", "members/"]) live.fb.remove(live.fb.ref(live.db, p + id)).catch(() => {});
+    tidyMsg = `Deleted ${ids.length} session${ids.length === 1 ? "" : "s"}.`; tidyKeep = null;
+  } catch { tidyMsg = "Couldn't delete. Check the connection and that you're signed in as trainer, then try again."; }
+  tidyAsk = false; sessionList = null; renderSessions(); loadSessions();
+}
+function tidyHtml() {
+  if (sessionList === null) return "";
+  const head = `<h3 class="sub">Tidy up</h3>`;
+  if (!tidyKeep) return `${head}<p class="note">Too many test sessions? Tick the ones to keep and delete the rest in one go.</p>
+    <div class="actions"><button class="ghost" id="tidyOpen">Choose sessions to keep</button>${tidyMsg ? `<span class="msg">${esc(tidyMsg)}</span>` : ""}</div>`;
+  const doomed = tidyDoomed();
+  return `${head}<p class="note">Tick every session to keep. The rest are deleted with all their scores. The live session and the one on screen are always kept. Save a backup first: it keeps every session as a file on this phone.</p>
+    ${sessionList.map(id => `<label class="tidy-row${!tidyLocked(id) && !tidyKeep.has(id) ? " gone" : ""}"><input type="checkbox" data-keep="${id}"${tidyLocked(id) || tidyKeep.has(id) ? " checked" : ""}${tidyLocked(id) ? " disabled" : ""}>
+      <span class="t"><b>${esc(eventLabel(id))} ${id.slice(0, 4)}${id === latest ? " · live now" : id === eventId ? " · on screen" : ""}</b><span class="note">${esc(tidySummary(id))}</span></span></label>`).join("")}
+    <div class="actions"><button class="ghost" id="tidyBackup">Save backup</button>
+      <button class="ghost" id="tidyAll">Tick all</button><button class="ghost" id="tidyNone">Untick all</button><button class="ghost" id="tidyClose">Close</button></div>
+    <div class="actions">${tidyAsk && doomed.length
+      ? `<span class="confirm">Delete ${doomed.length} session${doomed.length === 1 ? "" : "s"} and all their scores? This can't be undone. <button class="solid-danger" id="tidyYes">Delete</button><button class="ghost" id="tidyNo">Cancel</button></span>`
+      : `<button class="ghost danger" id="tidyGo"${doomed.length ? "" : " disabled"}>Delete ${doomed.length} not ticked</button>`}
+      ${tidyMsg ? `<span class="msg">${esc(tidyMsg)}</span>` : ""}</div>`;
 }
 
 // Starts today's session, or an extra one the same day, with the teams from the last session this phone
@@ -2408,6 +2460,7 @@ function renderSessions() {
     ${todays.length ? todays.map(id => row(id, id === latest ? `<span class="note">Live now</span>` : `<button class="ghost" data-switch="${id}">Switch everyone here</button>`)).join("") : `<p class="note">No session yet today.</p>`}
     <h3 class="sub">Past sessions</h3>
     ${past.length ? past.map(id => row(id, id === eventId ? onScreen : `<button class="ghost" data-open="${id}">Open</button>`)).join("") : `<p class="note">None yet.</p>`}`}
+    ${tidyHtml()}
     <h3 class="sub">Add a past session</h3>
     <p class="note">For results on paper. Pick the date, then type each team's numbers in. It opens only on your phone; the teams' phones stay where they are.</p>
     <div class="actions"><input type="date" id="pastDate" min="${FIRST_DAY}" max="${t}" class="date"><button class="solid" id="addPast">Add</button><span class="msg" id="pastMsg"></span></div>
@@ -2531,6 +2584,13 @@ document.addEventListener("click", e => {
     return;
   }
   else if (b.id === "delYes") return deleteSession();
+  else if (b.id === "tidyOpen") { tidyKeep = new Set(); tidyAsk = false; tidyMsg = ""; renderSessions(); return; }
+  else if (b.id === "tidyClose") { tidyKeep = null; tidyAsk = false; tidyMsg = ""; renderSessions(); return; }
+  else if (b.id === "tidyAll" || b.id === "tidyNone") { tidyKeep = new Set(b.id === "tidyAll" ? sessionList : []); tidyAsk = false; renderSessions(); return; }
+  else if (b.id === "tidyBackup") { tidyBackup(); renderSessions(); return; }
+  else if (b.id === "tidyGo") { tidyAsk = true; renderSessions(); return; }
+  else if (b.id === "tidyNo") { tidyAsk = false; renderSessions(); return; }
+  else if (b.id === "tidyYes") return tidyDelete(b);
   else if (b.id === "delNo") { renderSessions(); return; }
   else if (b.id === "startToday" || b.id === "startExtra") return startEvent(b, b.id === "startExtra");
   else if (b.id === "addTeam") { addTeam(); renderSetup(); }
@@ -2557,6 +2617,10 @@ document.addEventListener("submit", e => {
 document.addEventListener("change", e => {
   if (e.target.id === "startPick") startPick = e.target.value;
   if (e.target.id === "beatPick") beatPick = e.target.value;
+  if (e.target.dataset.keep && tidyKeep) {
+    if (e.target.checked) tidyKeep.add(e.target.dataset.keep); else tidyKeep.delete(e.target.dataset.keep);
+    tidyAsk = false; renderSessions();
+  }
   if (e.target.dataset.size !== undefined) { setSize(+e.target.dataset.size, +e.target.value); save(); renderAll(); }
 });
 
