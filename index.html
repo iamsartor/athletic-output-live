@@ -291,6 +291,28 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 .scr-tbl .tname .dot { width: .55em; height: .55em; }
 .scr-tbl .rk { font-size: .45em; }
 .scr-tbl .pb { font-size: .38em; }
+/* Group challenge: today's group totals against an earlier session's, station by station. */
+.beat { border-left: 6px solid var(--t3); display: flex; flex-direction: column; gap: 10px; }
+.beat-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.beat-pct { font-family: var(--display); font-weight: 800; font-size: 2.6rem; line-height: .9; font-variant-numeric: tabular-nums; }
+.beat-pct small { display: block; font-family: var(--body); font-weight: 600; font-size: .8rem; color: var(--muted); margin-top: 4px; }
+.beat-row { display: grid; grid-template-columns: minmax(5.5em, auto) 1fr auto; gap: 4px 10px; align-items: center; font-variant-numeric: tabular-nums; font-size: .9rem; }
+.beat-list { display: grid; grid-template-columns: minmax(5em, auto) 1fr auto; gap: 8px 10px; align-items: center; }
+.beat-list .beat-row { display: contents; }
+.beat-row b { font-weight: 600; }
+.beat-row .num { text-align: right; white-space: nowrap; }
+.beat-row .num small { display: block; font-size: .7rem; color: var(--muted); }
+.beat-bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; position: relative; }
+.beat-bar span { display: block; height: 100%; background: var(--t1); border-radius: 5px; transition: width .6s ease; }
+.beat-bar.won span { background: var(--t3); }
+.beat-done { color: var(--t3); font-weight: 700; }
+.beat select { font: inherit; padding: 9px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); max-width: 100%; }
+.scr-beat { background: var(--surface); border-radius: 14px; padding: .8vw 1.2vw; display: grid; grid-template-columns: auto 1fr; gap: .4vw 2vw; align-items: center; font-size: clamp(.9rem, 1.6vw, 2rem); }
+.scr-beat .beat-pct { font-size: 2.4em; }
+.scr-beat .beat-pct small { font-size: .45em; display: block; margin: .3em 0 0; }
+.scr-beat .beat-rows { display: grid; grid-template-columns: repeat(auto-fit, minmax(10em, 1fr)); gap: .5vw 1.6vw; }
+.scr-beat .beat-row { grid-template-columns: 1fr auto; font-size: 1em; }
+.scr-beat .beat-bar { grid-column: 1 / -1; height: .5em; }
 .glitter { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
 .glitter-msg { position: fixed; left: 50%; top: 40%; z-index: 51; pointer-events: none; white-space: nowrap; font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 9vw, 7rem); text-transform: uppercase; color: var(--fg); text-shadow: 0 0 .3em var(--bg), 0 0 .6em var(--bg); animation: glitter-pop 2.8s ease forwards; }
 @keyframes glitter-pop { 0% { transform: translate(-50%, -50%) scale(.6); opacity: 0; } 12% { transform: translate(-50%, -50%) scale(1.06); opacity: 1; } 20% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
@@ -328,6 +350,8 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 
   <div class="actions team-foot" id="teamFoot" hidden></div>
 
+  <section class="card beat" id="beatCard" hidden></section>
+
   <section class="card" id="standCard">
     <h2>Standings</h2>
     <div class="tbl-wrap"><table id="standings"></table></div>
@@ -343,6 +367,8 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
       <section class="card" id="linksCard" hidden></section>
 
       <section class="card" id="sessionsCard" hidden></section>
+
+      <section class="card beat" id="beatSetCard" hidden></section>
 
       <section class="card" id="historyCard" hidden></section>
 
@@ -850,7 +876,7 @@ function openEvent(id) {
   if (id === eventId) return;
   flush(); dropPending(); editing = null;
   if (stopEvent) stopEvent();
-  eventId = id; view = "wait"; if (joinState === "bad") joinState = "";
+  eventId = id; view = "wait"; beatId = null; if (joinState === "bad") joinState = "";
   renderAll();
   stopEvent = live.fb.onValue(path(), snap => applyRemote(snap.val()),
     () => { view = "error"; liveMsg = "This session can't be opened. Check the connection and reload."; renderAll(); });
@@ -862,6 +888,7 @@ function applyRemote(v) {
   if (!allEvents && !historyLoading) loadSessions();
   // Sessions from before v2 have no workout saved and were always Team Output.
   setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
+  beatId = beatOf(v.workout);
   liveClocks = v.clock || {};
   state.locked = v.locked === true;
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
@@ -888,7 +915,7 @@ function applyRemote(v) {
   if (!screenMode && role !== "trainer" && !forcedEvent && (joinState === "bad" || (!joinCode && joinState !== "open" && joinState !== "check"))) view = "scan";
   state.active = Math.min(state.active, state.teams.length - 1);
   if (!editing) renderBoard();
-  renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen();
+  renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderBeat(); renderQrCard(); renderScreen();
   if (!(document.activeElement && (document.activeElement.dataset.name !== undefined || document.activeElement.dataset.size !== undefined))) renderSetup();
   save();
   joinEvent();
@@ -1014,7 +1041,8 @@ function resetAll() {
 // Switches the session (or this phone) to another workout. Scores and clocks start over.
 function useWorkout(w) {
   editing = null;
-  if (live) { dropPending(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: JSON.stringify(w), counts: null, clock: null }); }
+  // The group challenge stays set, so the trainer can pick the target and the workout in either order.
+  if (live) { dropPending(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: JSON.stringify(beatId ? { ...w, beat: beatId } : w), counts: null, clock: null }); }
   setWorkout(w); state.teams.forEach(t => t.counts = blankCounts()); state.clocks = {};
 }
 
@@ -1027,7 +1055,7 @@ function loadSessions() {
     .then(s => {
       allEvents = s.val() || {}; eventsVersion++;
       sessionList = Object.keys(allEvents).sort().reverse();
-      renderSessions(); renderHistory(); renderStandings(); renderScreen(); if (!editing) renderBoard();
+      renderSessions(); renderHistory(); renderBeat(); renderStandings(); renderScreen(); if (!editing) renderBoard();
     })
     .catch(() => {})
     .finally(() => historyLoading = false);
@@ -1463,13 +1491,15 @@ const shortDate = id => {
   const d = new Date(id.slice(0, 10) + "T12:00");
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
 };
+function pastSession(id) {
+  const e = allEvents?.[id]; if (!e || !e.teams) return null;
+  const w = e.workout ? parseWorkout(e.workout) || LEGACY : LEGACY;
+  const teams = Object.keys(e.teams).sort((a, b) => e.teams[a].order - e.teams[b].order).map(tid => ({
+    id: tid, name: e.teams[tid].name, counts: [...Array(w.rounds).keys()].map(r => ({ ...(e.counts?.[tid]?.["r" + r] || {}) })) }));
+  return { id, w, teams };
+}
 function pastSessions() {
-  return Object.keys(allEvents || {}).sort().filter(id => id < (eventId || "9") && allEvents[id] && allEvents[id].teams).map(id => {
-    const e = allEvents[id], w = e.workout ? parseWorkout(e.workout) || LEGACY : LEGACY;
-    const teams = Object.keys(e.teams).sort((a, b) => e.teams[a].order - e.teams[b].order).map(tid => ({
-      id: tid, name: e.teams[tid].name, counts: [...Array(w.rounds).keys()].map(r => ({ ...(e.counts?.[tid]?.["r" + r] || {}) })) }));
-    return { id, w, teams };
-  });
+  return Object.keys(allEvents || {}).sort().filter(id => id < (eventId || "9")).map(pastSession).filter(Boolean);
 }
 function bests() {
   const stamp = eventsVersion + "|" + eventId;
@@ -1528,6 +1558,91 @@ function renderHistory() {
     <h3 class="sub">Past sessions · winners</h3>
     ${past || `<p class="note">None yet.</p>`}
     ${SHOW_BESTS ? `<p class="note">Bests compare the same workout over earlier sessions. A team keeps its bests when it's renamed; a team that is removed and added again starts fresh.</p>` : ""}`;
+}
+
+// ---- Group challenge ----
+// Repeating a workout: the trainer picks an earlier session, and every phone and the big screen show the whole
+// group's totals today against that day's, station by station. The target is kept inside the session's copy of
+// its workout ("beat": "2026-10-16"), so it needs no change to the database rules and older pages ignore it.
+let beatId = null, beatPick = "";
+const BEAT_RE = /^202[5-9]-[01][0-9]-[0-3][0-9](-[2-9])?$/;
+function beatOf(json) {
+  try { const b = JSON.parse(json || "{}").beat; return typeof b === "string" && BEAT_RE.test(b) ? b : null; } catch { return null; }
+}
+// Stations whose results add up over teams to one number: max stations, EMOM reps, AMRAPs counted in reps.
+const groupable = s => s.type === "count" || (s.type === "emom" && s.measure === "reps") || (s.type === "amrap" && !!s.repsPerRound);
+const groupSum = (s, teams, w) => teams.reduce((a, t) => a + -score(s, t, w).key[0], 0);
+const groupUnit = s => s.type === "count" ? s.unit : "reps";
+// The same station in the earlier session: same id, or failing that the same name, and the same kind.
+const matchStation = (s, w) => w.stations.find(x => x.id === s.id && groupable(x)) || w.stations.find(x => x.name.toLowerCase() === s.name.toLowerCase() && groupable(x));
+// Each station: the group's total now and that day's. Overall is the average of the stations' percentages,
+// so cals, reps and meters weigh the same (a plain sum would be all meters).
+function challengeAgainst(ev) {
+  const rows = W.stations.filter(groupable).map(s => {
+    const p = matchStation(s, ev.w); if (!p) return null;
+    const target = groupSum(p, ev.teams, ev.w); if (!target) return null;
+    const now = groupSum(s, state.teams, W);
+    return { s, now, target, won: now > target };
+  }).filter(Boolean);
+  const pct = rows.length ? rows.reduce((a, x) => a + x.now / x.target, 0) / rows.length * 100 : 0;
+  // The group has beaten the day once it is past 100% overall, even if one station is still short.
+  return { rows, pct, won: rows.length > 0 && pct > 100 };
+}
+function challenge() {
+  if (!beatId || !allEvents) return null;
+  const ev = pastSession(beatId);
+  return ev ? { id: beatId, ...challengeAgainst(ev) } : { id: beatId, rows: [], pct: 0, won: false, missing: true };
+}
+const pctText = x => x >= 99.5 && x < 100 ? "99%" : Math.round(x) + "%";
+const beatLabel = id => `${shortDate(id)}${id.length > 10 ? " (extra)" : ""}`;
+function beatRowHtml(x, screen) {
+  const left = x.target - x.now, w = Math.min(100, x.now / x.target * 100);
+  const note = x.won ? `<span class="beat-done">Beaten +${x.now - x.target}</span>` : left === 0 ? "Level" : `${left} to go`;
+  return `<div class="beat-row"><b>${esc(x.s.name)}</b>${screen ? "" : `<div class="beat-bar${x.won ? " won" : ""}"><span style="width:${w}%"></span></div>`}
+    <span class="num">${x.now} / ${x.target} ${esc(groupUnit(x.s))}<small>${note}</small></span>
+    ${screen ? `<div class="beat-bar${x.won ? " won" : ""}"><span style="width:${w}%"></span></div>` : ""}</div>`;
+}
+function beatHead(c) {
+  return c.won ? `Beaten! ${pctText(c.pct)}` : pctText(c.pct);
+}
+function renderBeat() {
+  const el = $("beatCard"), c = challenge();
+  el.hidden = screenMode || !c || !c.rows.length || !["trainer", "team", "pick"].includes(view) || trainerLocked();
+  if (!el.hidden) el.innerHTML = `
+    <div class="beat-top"><h2>Group challenge</h2><span class="note">vs ${esc(beatLabel(c.id))}</span></div>
+    <div class="beat-pct">${esc(beatHead(c))}<small>of ${esc(shortDate(c.id))} · ${c.rows.filter(x => x.won).length} of ${c.rows.length} stations beaten</small></div>
+    <div class="beat-list">${c.rows.map(x => beatRowHtml(x, false)).join("")}</div>
+    <p class="note">All teams together against everyone's total on ${esc(shortDate(c.id))}${W.rounds > 1 ? ", over all rounds" : ""}. The percentage is the average over the stations, so each station counts the same.</p>`;
+  renderBeatSet();
+}
+function beatScreenHtml() {
+  const c = screenMode && challenge();
+  if (!c || !c.rows.length) return "";
+  return `<div class="scr-beat"><div class="beat-pct">${esc(beatHead(c))}<small>Group vs ${esc(shortDate(c.id))}</small></div>
+    <div class="beat-rows">${c.rows.map(x => beatRowHtml(x, true)).join("")}</div></div>`;
+}
+// Trainer tools: pick the earlier session to beat.
+function renderBeatSet() {
+  const el = $("beatSetCard");
+  el.hidden = screenMode || !live || !trainerOn();
+  if (el.hidden || el.contains(document.activeElement) && document.activeElement.tagName === "SELECT") return;
+  const c = challenge();
+  const opts = !allEvents ? null : pastSessions().reverse().map(ev => ({ ev, ch: challengeAgainst(ev) })).filter(o => o.ch.rows.length);
+  if (opts && beatPick && !opts.some(o => o.ev.id === beatPick)) beatPick = "";
+  const pick = beatPick || opts?.find(o => o.ev.w.id === W.id)?.ev.id || opts?.[0]?.ev.id || "";
+  el.innerHTML = `
+    <h2>Group challenge</h2>
+    <p class="note">Repeating a workout? Pick the earlier session: every phone and the big screen show all teams' totals today against that day's, station by station.</p>
+    ${beatId ? `<div class="actions"><span>Target: <b>${esc(beatLabel(beatId))}</b>${c && c.missing ? " (that session is gone)" : c && !c.rows.length ? " (no stations in common with this workout)" : ""}</span>
+      <button class="ghost" id="beatOff">Remove</button></div>` : ""}
+    ${opts === null ? `<p class="note">Loading sessions…</p>` : !opts.length ? `<p class="note">No earlier session with scores on these stations yet.</p>` : `
+    <div class="actions"><select id="beatPick" aria-label="Session to beat">${opts.map(({ ev, ch }) =>
+      `<option value="${ev.id}"${ev.id === pick ? " selected" : ""}>${esc(beatLabel(ev.id))} · ${esc(ev.w.name)} · ${ch.rows.map(x => `${esc(x.s.name)} ${x.target}`).join(", ")}</option>`).join("")}</select>
+      <button class="solid" id="beatSet">${beatId ? "Change target" : "Set as target"}</button></div>`}`;
+}
+function setBeat(id) {
+  if (!live || !eventId) return;
+  return live.fb.set(path("workout"), JSON.stringify(id ? { ...W, beat: id } : W)).catch(() => {});
 }
 
 // ---- QR codes ----
@@ -1749,6 +1864,7 @@ function renderScreen() {
       <div class="phase-tag" data-phasetag>${esc(phaseTag())}</div>
       ${W.slot ? `<div class="scr-clock" data-slotclock>${slotClockHtml()}</div>` : timed() ? `<div class="scr-clock" data-clock>${clockText()}</div>` : ""}</div>
     ${W.stations.filter(hasNowNext).map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
+    ${beatScreenHtml()}
     ${showLanes() ? `<div class="scr-main"><div class="rot-board">${swimlaneHtml()}</div>
       ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : ""}
     ${showLanes() ? "" : W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
@@ -1816,7 +1932,9 @@ document.addEventListener("click", e => {
 // Opening a session, loading history or switching view only takes a fresh look, so old PBs don't go off.
 let celebStamp = null, celebSeen = new Set();
 function celebrate() {
-  const stamp = [eventId, eventsVersion, W.id, view, state.round].join("|"), now = new Set();
+  const stamp = [eventId, eventsVersion, W.id, view, state.round, beatId].join("|"), now = new Set();
+  const ch = challenge();
+  if (ch && ch.rows.length) { for (const x of ch.rows) if (x.won) now.add(`group|${x.s.id}|beat`); if (ch.won) now.add("group|all|beat"); }
   for (const t of state.teams) for (const s of W.stations) {
     const b = badge(s, t);
     if (b) now.add(`${t.id}|${s.id}|${b.includes("Record") ? "Record" : "PB"}`);
@@ -1825,8 +1943,11 @@ function celebrate() {
   const fresh = stamp === celebStamp ? [...now].filter(k => !celebSeen.has(k)) : [];
   celebStamp = stamp; celebSeen = now;
   const mine = view === "team" ? state.teams[state.active]?.id : null;
-  const hits = fresh.map(k => k.split("|")).filter(([tid]) => !mine || tid === mine);
+  const hits = fresh.map(k => k.split("|")).filter(([tid]) => !mine || tid === mine || tid === "group");
   if (!hits.length) return;
+  // The whole group beating an earlier session goes off on every phone and the big screen.
+  const g = hits.find(x => x[1] === "all") || hits.find(x => x[0] === "group");
+  if (g) return glitter(g[1] === "all" ? `Group beat ${shortDate(beatId)}!` : `${W.stations.find(s => s.id === g[1])?.name || ""} beaten!`, true);
   const [tid, sid, kind] = hits.find(x => x[2] === "Record") || hits[0];
   const t = state.teams.find(t => t.id === tid), s = W.stations.find(s => s.id === sid);
   glitter(`${t.name} · ${kind === "goal" ? `${s.target} ${s.unit}!` : kind + "!"}`, kind === "Record" || screenMode);
@@ -2230,7 +2351,8 @@ const GUIDE = [
     "Switching a session to another workout clears its scores (it asks first). **Copy** puts a workout on the clipboard so a chatbot can change it; pasting it back with the same id replaces it. Every session keeps its own copy of its workout." ] },
   { h: "Sessions and history", p: [
     "**Trainer tools > Sessions**: switch everyone to another of today's sessions, open a past one, or add a past date to type in results from paper. **Delete this session** is there too. A second class on the same day: **Trainer tools > Links > Start extra session**.",
-    "**Trainer tools > History**: the winners of past sessions." ] },
+    "**Trainer tools > History**: the winners of past sessions.",
+    "**Trainer tools > Group challenge**: repeating a workout? Pick the earlier session and every phone and the big screen show the whole group's totals against that day's, station by station, with how far the group has got. Beating a station, and then the whole day, sets off the glitter everywhere." ] },
   { h: "Race simulation", p: [
     "A workout with a **slot** (like 3:30) is a rotation: everyone does every station in race order and moves on at the same time. Each person or pair is one entry and starts at a different station, so all finish together.",
     "Starts are spread out by themselves (in a race sim half on runs and half on stations). To change one, **Trainer tools > Start stations**: tap **Move** on a team, then the station. A free station moves it there, a taken one swaps the two.",
@@ -2321,7 +2443,7 @@ function renderSections() {
   $("toolsLabel").textContent = view === "local" ? "Workouts and teams" : "Trainer tools";
 }
 
-function renderAll() { renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderQrCard(); renderScreen(); renderBig(); }
+function renderAll() { renderStarts(); renderHelp(); renderHeader(); renderRound(); renderTeams(); renderBoard(); renderStandings(); renderLive(); renderPicker(); renderSections(); renderSessions(); renderWorkout(); renderHistory(); renderBeat(); renderQrCard(); renderScreen(); renderBig(); }
 
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b || b.disabled) return;
@@ -2374,6 +2496,8 @@ document.addEventListener("click", e => {
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
   else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
   else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
+  else if (b.id === "beatSet") return setBeat($("beatPick")?.value || "");
+  else if (b.id === "beatOff") return setBeat(null);
   else if (b.id === "bigOn") { openBig(); editing = null; }
   else if (b.id === "bigOff") { editing = null; if (bigInHistory()) return closeBig(); setBig(false); }
   else if (b.id === "clockStart") startClock();
@@ -2431,6 +2555,7 @@ document.addEventListener("submit", e => {
 
 document.addEventListener("change", e => {
   if (e.target.id === "startPick") startPick = e.target.value;
+  if (e.target.id === "beatPick") beatPick = e.target.value;
   if (e.target.dataset.size !== undefined) { setSize(+e.target.dataset.size, +e.target.value); save(); renderAll(); }
 });
 
