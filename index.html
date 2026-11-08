@@ -325,8 +325,21 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 #title, .scr-title { -webkit-user-select: none; user-select: none; }
 .scr-join { background: var(--surface); border-radius: 14px; padding: 1.2vw; text-align: center; width: clamp(160px, 17vw, 320px); }
 @media (max-width: 800px) { .scr-main { grid-template-columns: 1fr; } .scr-join { display: none; } }
+/* B13: the countdown before the start, over every phone and the big screen. Taps go through to the page. */
+.cd { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh;
+  background: color-mix(in srgb, var(--bg) 94%, transparent); pointer-events: none; text-align: center; padding: 16px; }
+.cd[hidden] { display: none; }
+.cd-l { font-family: var(--display); font-weight: 800; text-transform: uppercase; letter-spacing: .08em; font-size: clamp(1.1rem, 4vw, 3rem); color: var(--muted); }
+.cd-n { font-family: var(--display); font-weight: 800; font-variant-numeric: tabular-nums; line-height: .85; font-size: clamp(9rem, 45vmin, 40rem); }
+.cd.last .cd-n { color: var(--go); }
+.cd.go { background: color-mix(in srgb, var(--go) 80%, var(--bg)); }
+.cd.go .cd-n { color: var(--fg); }
+.cd .actions { pointer-events: auto; display: flex; gap: 8px; margin-top: 2vh; }
+.cd-pick { font: inherit; font-size: .9rem; padding: 9px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.scr-tbl .split { font-size: .5em; color: var(--muted); font-weight: 600; }
 </style>
 </head><body>
+<div id="cdOverlay" class="cd" hidden aria-live="assertive"></div>
 
 <div class="wrap">
   <section id="screen" hidden></section>
@@ -634,6 +647,16 @@ function score(s, t, w = W) {
   const text = capped && R.length === 1 ? `Cap · ${reps}${s.totalReps ? "/" + s.totalReps : ""} ${s.unit || "reps"}` : fmt(secs) + (capped ? ` · ${capped} capped` : "");
   return { key: s.totalReps ? [missing, secs, -progress] : [missing, capped, secs, -reps], text };
 }
+// B14: each round's part of a station's total, "165/150", once round 2 has begun (it's picked, its clock
+// started or a team has counted in it). Count and for-time stations only; AMRAP and EMOM keep the total.
+const splitsOn = () => W.rounds > 1 && (state.round > 0 || roundList().slice(1).some(r => rawClock(r))
+  || state.teams.some(t => t.counts.slice(1).some(c => c && Object.values(c).some(x => x))));
+function splitOf(s, t) {
+  if (!splitsOn()) return "";
+  if (s.type === "count") return roundList().map(r => val(t, r, s.id)).join("/");
+  if (s.type === "time") return roundList().map(r => val(t, r, s.id + "_c") ? "cap" : val(t, r, s.id + "_t") ? fmt(val(t, r, s.id + "_t")) : "–").join("/");
+  return "";
+}
 // Stations that count for the ranking. An EMOM is a progress grid for each team unless it's marked scored.
 const ranked = (s, w = W) => (s.type !== "emom" || s.scored) && !(w.slot && !w.ranked);
 const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0) ? -1 : 1; return 0; };
@@ -644,7 +667,15 @@ const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c
 // A paused clock is stored as minus the milliseconds it shows (-390000 is paused at 6:30), so pausing
 // needs no extra field in the database. 0 or missing: not started.
 const now = () => Date.now() + (live ? serverOffset : 0);
-const clockStart = r => (live ? liveClocks : state.clocks)["r" + r] || 0;
+const rawClock = r => (live ? liveClocks : state.clocks)["r" + r] || 0;
+// A start time in the future is the countdown before the start (B13): until it's reached the clock
+// counts as not started, so rotations, EMOM minutes and "Finished" all wait for 0:00.
+const clockStart = r => { const v = rawClock(r); return v > 0 && v > now() ? 0 : v; };
+const countdownLeft = r => { const v = rawClock(r); return v > 0 && v > now() ? (v - now()) / 1000 : 0; };
+const countdownRound = () => roundList().find(r => countdownLeft(r) > 0);
+// The countdown length is the trainer phone's own choice (Off, 10, 20 or 30 seconds), 20 by default.
+const CD_KEY = "team-output-countdown", CD_OPTS = [0, 10, 20, 30];
+const countdownSecs = () => { try { const v = localStorage.getItem(CD_KEY); return v !== null && CD_OPTS.includes(+v) ? +v : 20; } catch { return 20; } };
 const paused = r => clockStart(r) < 0;
 const timed = () => !!W.slot || W.timer !== undefined || W.stations.some(s => s.type !== "count");
 const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(W.timer || 0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
@@ -652,6 +683,8 @@ const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(W.timer ||
 const timerDone = () => !!W.timer && clockStart(state.round) > 0 && elapsed(state.round) >= clockEnd();
 const elapsed = r => { const v = clockStart(r); return v < 0 ? -v / 1000 : v ? Math.max(0, (now() - v) / 1000) : 0; };
 function clockText() {
+  const cd = countdownLeft(state.round);
+  if (cd) return `Starts in ${Math.ceil(cd)}`;
   const end = clockEnd(), el = end ? Math.min(elapsed(state.round), end) : elapsed(state.round);
   const p = paused(state.round) ? " · paused" : "";
   if (W.timer && end && el >= end) return "Time!";
@@ -660,8 +693,9 @@ function clockText() {
 }
 const minuteNow = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60) + 1) : 0;
 const canRunClock = () => view === "local" || (trainerOn() && eventId && eventId.startsWith(today()));
-function startClock() {
-  const r = state.round;
+function startClock(skipCountdown = false) {
+  const r = state.round, cd = skipCountdown ? 0 : countdownSecs();
+  if (cd) return writeClock(r, now() + cd * 1000);
   if (live) return live.fb.set(path("clock", "r" + r), live.fb.serverTimestamp());
   state.clocks["r" + r] = Date.now();
 }
@@ -911,7 +945,7 @@ function applyRemote(v) {
   if (screenMode) {
     view = "screen";
     // The screen shows the clock of the round that started last.
-    const began = r => clockStart(r) ? now() - elapsed(r) * 1000 : 0;
+    const began = r => countdownLeft(r) ? rawClock(r) : clockStart(r) ? now() - elapsed(r) * 1000 : 0;
     state.round = roundList().reduce((best, r) => began(r) > began(best) ? r : best, 0);
   }
   else if (role === "trainer") view = "trainer";
@@ -1205,7 +1239,7 @@ const stepBtns = (key, steps) => `
   <div class="minus-row"><button data-k="${key}" data-d="${-steps[0]}">Undo &minus;${steps[0]}</button></div>`;
 const top = (name, unit) => `<div class="st-top"><span class="st-name">${esc(name)}</span><span class="st-unit">${esc(unit)}</span></div>`;
 const info = s => s.info ? `<div class="st-info">${esc(s.info)}</div>` : "";
-const totalLine = (s, t) => W.rounds > 1 ? `<div class="st-other">Total over all rounds: ${esc(score(s, t).text)}</div>` : "";
+const totalLine = (s, t) => W.rounds > 1 ? `<div class="st-other">Total over all rounds: ${esc(score(s, t).text)}${splitOf(s, t) ? ` (${esc(splitOf(s, t))})` : ""}</div>` : "";
 
 const emomSel = {}, lastMinute = {};
 const STATION = {
@@ -1213,7 +1247,7 @@ const STATION = {
     <div class="st">${top(s.name, s.unit)}${info(s)}
       ${bigVal(s.id, val(t, r, s.id), `${s.name} ${s.unit}`)}
       ${stepBtns(s.id, s.steps)}
-      ${W.rounds > 1 ? `<div class="st-other">${roundList().filter(x => x !== r).map(x => `Round ${x + 1}: ${val(t, x, s.id)}`).join(" · ")} · Total ${esc(score(s, t).text)}</div>` : ""}
+      ${W.rounds > 1 ? `<div class="st-other">Total ${esc(score(s, t).text)}${splitOf(s, t) ? ` (${esc(splitOf(s, t))})` : ""}</div>` : ""}
     </div>`,
   time: (s, t, r) => {
     const T = val(t, r, s.id + "_t"), capped = val(t, r, s.id + "_c"), running = clockStart(r);
@@ -1368,6 +1402,32 @@ function rotCue() {
   document.querySelectorAll("[data-rot], #bigView").forEach(el => { el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); });
 }
 
+// B13: the big countdown before the start, then GO for a moment. A phone on another round jumps to the
+// round that's about to start. When it reaches 0:00 the screen is drawn again, so the buttons and the
+// "waiting for the clock" texts change over.
+let cdShown = null, goUntil = 0;
+function countdownCue() {
+  const el = $("cdOverlay"), r = countdownRound();
+  if (r !== undefined) {
+    if (cdShown !== r && view === "team" && state.round !== r) { state.round = r; editing = null; renderAll(); }
+    cdShown = r;
+    const n = Math.ceil(countdownLeft(r));
+    const h = `<div class="cd-l">${W.rounds > 1 ? `Round ${r + 1} · ` : ""}Get ready</div><div class="cd-n">${n}</div>${canRunClock() && !screenMode && r === state.round
+      ? `<div class="actions"><button class="solid" id="clockNow">Start now</button><button class="ghost" id="clockYes">Cancel</button></div>` : ""}`;
+    if (el.dataset.n !== String(n) || el.dataset.h !== h) { el.innerHTML = h; el.dataset.n = n; el.dataset.h = h; }
+    el.classList.toggle("last", n <= 3); el.classList.remove("go"); el.hidden = false;
+    return;
+  }
+  if (cdShown !== null) {
+    // It reached zero (GO) or was cancelled (no GO).
+    const r0 = cdShown; cdShown = null;
+    if (clockStart(r0) > 0) { goUntil = Date.now() + 1500; el.innerHTML = `<div class="cd-n">GO</div>`; el.dataset.n = el.dataset.h = ""; el.classList.remove("last"); el.classList.add("go"); el.hidden = false; }
+    renderAll();
+  }
+  if (goUntil && Date.now() >= goUntil) { goUntil = 0; el.hidden = true; }
+  if (!goUntil && !el.hidden) el.hidden = true;
+}
+
 // Every phone flashes the clock when a countdown timer runs out; the trainer's buttons change to Start again.
 let lastDone = false;
 function timerCue() {
@@ -1411,15 +1471,18 @@ const nowNextBox = s => `<div class="nownext" data-nn="${s.id}">${nowNextHtml(s)
 const hasNowNext = s => s.type === "emom" || ((s.type === "time" || s.type === "amrap") && W.stations.length > 1 && !W.slot);
 const todaysSession = () => !(live && eventId && !eventId.startsWith(today()));
 
+const cdPick = () => `<select class="cd-pick" id="cdPick" aria-label="Countdown before the start">${CD_OPTS.map(n => `<option value="${n}"${countdownSecs() === n ? " selected" : ""}>${n ? `${n} s countdown` : "No countdown"}</option>`).join("")}</select>`;
 function clockBar() {
   if (!timed() || (live && eventId && !eventId.startsWith(today()))) return "";
   const r = state.round, started = clockStart(r);
   if (editing === "__clock") return `<div class="clockbar"><span class="note">Set the clock to</span>
     <input class="st-input clock-in" id="edit" type="text" inputmode="decimal" placeholder="m:ss" value="${fmt(elapsed(r))}" aria-label="Clock time, minutes and seconds">
     <span class="actions"><button class="solid" id="clockSetOk">Set</button><button class="ghost" id="clockNo">Cancel</button></span></div>`;
-  const ctl = !canRunClock() ? (started ? "" : `<span class="note">The trainer starts the clock</span>`)
-    : `<span class="actions" id="clockArea">${!started ? `<button class="solid" id="clockStart">Start clock</button>`
-      : paused(r) ? `<button class="solid" id="clockResume">Resume</button>` : timerDone() ? `<button class="solid" id="clockStart">Start again</button>` : `<button class="ghost" id="clockPause">Pause</button>`}
+  // During the countdown the trainer can start at once or cancel (the clock goes back to not started).
+  const ctl = countdownLeft(r) ? (canRunClock() ? `<span class="actions" id="clockArea"><button class="solid" id="clockNow">Start now</button><button class="ghost" id="clockYes">Cancel</button></span>` : "")
+    : !canRunClock() ? (started ? "" : `<span class="note">The trainer starts the clock</span>`)
+    : `<span class="actions" id="clockArea">${!started ? `<button class="solid" id="clockStart">Start clock</button>${cdPick()}`
+      : paused(r) ? `<button class="solid" id="clockResume">Resume</button>` : timerDone() ? `<button class="solid" id="clockStart">Start again</button>${cdPick()}` : `<button class="ghost" id="clockPause">Pause</button>`}
       <button class="ghost" id="clockSet">Set time</button>${started ? `<button class="ghost" id="clockReset">Reset</button>` : ""}</span>`;
   return `<div class="clockbar"><span class="clock-val" data-clock>${clockText()}</span>${ctl}</div>`;
 }
@@ -1494,7 +1557,7 @@ setInterval(() => {
   if (screenMode && W.slot) document.querySelectorAll("[data-slotclock]").forEach(el => { const h = slotClockHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rotstrip]").forEach(el => { const h = rotStripHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rothead]").forEach(el => { const h = esc(rotHead()); if (el.innerHTML !== h) el.innerHTML = h; });
-  rotCue(); timerCue(); phaseCue(); if (bigOn) renderBig();
+  countdownCue(); rotCue(); timerCue(); phaseCue(); if (bigOn) renderBig();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
@@ -1929,7 +1992,7 @@ function renderScreen() {
         <tbody>${rows.map(({ t, i, pts, place }) => `
           <tr class="${any && place === 1 ? "lead" : ""}"><td class="place">${any ? place : ""}</td>
             <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
-            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
+            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${splitOf(s, t) ? `<span class="split"> (${esc(splitOf(s, t))})</span>` : ""}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
             ${n > 1 ? `<td class="pts">${any ? pts : "–"}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
       ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
@@ -2017,7 +2080,7 @@ function renderStandings() {
       <tr class="${n && any && place === 1 ? "lead" : ""}">
         <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
         ${n ? `<td class="pts">${!any ? "–" : one ? place : pts}${any && !one ? `<span class="rk">${ordinal(place)}</span>` : ""}</td>` : ""}
-        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id]?.[i] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
+        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${splitOf(s, t) ? `<span class="avg">(${esc(splitOf(s, t))})</span>` : ""}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id]?.[i] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
       </tr>`).join("")}</tbody>`;
   const over = W.rounds > 1 ? " over all rounds" : "";
   const free = W.stations.filter(s => !ranked(s));
@@ -2396,6 +2459,8 @@ const GUIDE = [
     "Timed workouts (for time, AMRAP, EMOM) have a shared clock. **Start clock** on the trainer phone; every phone and the big screen follow it.",
     "**Pause** stops the clock and the EMOM minutes (for a break); **Resume** carries on. **Set time** jumps to an exact time like 6:30, for example after a false start; EMOM ticks for minutes not reached yet are cleared. **Reset** starts over (it asks first).",
     "With several rounds, each round has its own clock: pick the round at the top first.",
+    "**Start clock** first counts down on every phone and the big screen (20 s unless you pick 10 s, 30 s or no countdown next to the button), then shows **GO** and the clock starts at 0:00. During the countdown **Start now** skips it and **Cancel** stops it. Team phones jump to the round that's about to start.",
+    "From round 2 on, each station shows its total with the rounds in brackets, for example **315 (165/150)**, on the phones and the big screen. The ranking still uses the total.",
     "A workout with a **timer** (like 5:00) gets a countdown even if it only counts reps: every phone flashes and shows **Time!** when it runs out, and **Start again** begins the next block." ] },
   { h: "Fixing scores as the trainer", p: [
     "Pick a team with the tabs above the stations to see and change its numbers, the same way a team does." ] },
@@ -2555,6 +2620,7 @@ document.addEventListener("click", e => {
   else if (b.id === "bigOn") { openBig(); editing = null; }
   else if (b.id === "bigOff") { editing = null; if (bigInHistory()) return closeBig(); setBig(false); }
   else if (b.id === "clockStart") startClock();
+  else if (b.id === "clockNow") startClock(true);
   else if (b.id === "clockReset") {
     $("clockArea").innerHTML = `<span class="confirm">Reset the clock? <button class="solid-danger" id="clockYes">Reset</button><button class="ghost" id="clockNo">Cancel</button></span>`;
     return;
@@ -2617,6 +2683,7 @@ document.addEventListener("submit", e => {
 document.addEventListener("change", e => {
   if (e.target.id === "startPick") startPick = e.target.value;
   if (e.target.id === "beatPick") beatPick = e.target.value;
+  if (e.target.id === "cdPick") { try { localStorage.setItem(CD_KEY, e.target.value); } catch {} }
   if (e.target.dataset.keep && tidyKeep) {
     if (e.target.checked) tidyKeep.add(e.target.dataset.keep); else tidyKeep.delete(e.target.dataset.keep);
     tidyAsk = false; renderSessions();
@@ -2637,7 +2704,7 @@ document.addEventListener("input", e => {
 // It stays on while the workout clock runs (up to its end, or an hour), and the big screen always stays on.
 const AWAKE_MIN = 3;
 let wakeHeld = null, wakeAsking = false, lastTap = Date.now();
-const clockKeepsAwake = () => clockStart(state.round) > 0 && elapsed(state.round) < (clockEnd() || 3600);
+const clockKeepsAwake = () => rawClock(state.round) > 0 && elapsed(state.round) < (clockEnd() || 3600);
 const keepAwake = () => screenMode || Date.now() - lastTap < AWAKE_MIN * 60000 || clockKeepsAwake();
 async function wake() {
   if (!navigator.wakeLock || document.visibilityState !== "visible") return;
