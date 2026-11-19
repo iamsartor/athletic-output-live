@@ -337,6 +337,21 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 .cd .actions { pointer-events: auto; display: flex; gap: 8px; margin-top: 2vh; }
 .cd-pick { font: inherit; font-size: .9rem; padding: 9px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .scr-tbl .split { font-size: .5em; color: var(--muted); font-weight: 600; }
+.scr-tbl .avg.tot { font-size: .42em; }
+/* Big screen controls: a faint bar in the corner, so a tablet used as the screen can pause the clock. */
+#scrCtl { display: none; }
+body.screen #scrCtl { display: flex; position: fixed; right: .8rem; bottom: .8rem; z-index: 6; gap: 8px; align-items: flex-end; flex-direction: column; }
+.sc-bar { display: flex; gap: 8px; opacity: .45; transition: opacity .3s; }
+.sc-bar:hover, .sc-bar:focus-within, #scrCtl.open .sc-bar { opacity: 1; }
+.sc-bar button { font-size: clamp(1rem, 1.6vw, 1.5rem); padding: .55em 1.1em; }
+.sc-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / .25); max-width: min(92vw, 420px); font-size: 1rem; }
+.sc-panel h2 { margin: 0; font-size: 1.2rem; }
+.sc-panel .note { margin: 0; }
+.res-opts { display: flex; flex-direction: column; gap: 10px; }
+.res-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.res-row > span { font-weight: 600; }
+.seg.small button { font-size: .85rem; padding: 7px 12px; }
 </style>
 </head><body>
 <div id="cdOverlay" class="cd" hidden aria-live="assertive"></div>
@@ -344,6 +359,7 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
 <div class="wrap">
   <section id="screen" hidden></section>
   <a id="scrBack" href="./" aria-label="Back" title="Back">&larr;</a>
+  <div id="scrCtl"></div>
   <section id="bigView" aria-live="off"></section>
 
   <header>
@@ -387,6 +403,8 @@ body.screen #scrBack:hover, body.screen #scrBack:focus-visible { opacity: .9; }
       <section class="card" id="sessionsCard" hidden></section>
 
       <section class="card beat" id="beatSetCard" hidden></section>
+
+      <section class="card" id="resultsCard" hidden></section>
 
       <section class="card" id="historyCard" hidden></section>
 
@@ -889,6 +907,8 @@ async function initLive() {
   live.fb.onValue(live.fb.ref(live.db, ".info/connected"), s => { connected = !!s.val(); if (connected) presenceSent = ""; renderLive(); });
   live.fb.onValue(live.fb.ref(live.db, ".info/serverTimeOffset"), s => { serverOffset = s.val() || 0; });
   if (getRole() === "trainer" && !screenMode) checkPin();
+  // The big screen checks quietly whether it was unlocked before (for its controls); it never blocks the screen.
+  else if (screenMode) signIn().then(() => { joinEvent(); checkPin(); }).catch(() => { pinState = "noauth"; renderAll(); });
   else signIn().then(joinEvent).catch(() => { joinState = "open"; liveMsg = "This phone couldn't sign in, so its taps may not count. Reload to try again."; renderAll(); });
   live.fb.onValue(live.fb.ref(live.db, "workouts"), s => {
     saved = {};
@@ -915,7 +935,7 @@ function openEvent(id) {
   if (id === eventId) return;
   flush(); dropPending(); editing = null;
   if (stopEvent) stopEvent();
-  eventId = id; view = "wait"; beatId = null; if (joinState === "bad") joinState = "";
+  eventId = id; view = "wait"; beatId = null; resOpt = { ...RES_DEFAULT }; if (joinState === "bad") joinState = "";
   renderAll();
   stopEvent = live.fb.onValue(path(), snap => applyRemote(snap.val()),
     () => { view = "error"; liveMsg = "This session can't be opened. Check the connection and reload."; renderAll(); });
@@ -927,7 +947,7 @@ function applyRemote(v) {
   if (!allEvents && !historyLoading) loadSessions();
   // Sessions from before v2 have no workout saved and were always Team Output.
   setWorkout(v.workout ? parseWorkout(v.workout) || LEGACY : LEGACY);
-  beatId = beatOf(v.workout);
+  beatId = beatOf(v.workout); resOpt = resOf(v.workout);
   liveClocks = v.clock || {};
   state.locked = v.locked === true;
   const ids = Object.keys(v.teams).sort((a, b) => v.teams[a].order - v.teams[b].order);
@@ -1081,7 +1101,7 @@ function resetAll() {
 function useWorkout(w) {
   editing = null;
   // The group challenge stays set, so the trainer can pick the target and the workout in either order.
-  if (live) { dropPending(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: JSON.stringify(beatId ? { ...w, beat: beatId } : w), counts: null, clock: null }); }
+  if (live) { dropPending(); clearTimeout(flushTimer); return live.fb.update(path(), { workout: workoutJson(w), counts: null, clock: null }); }
   setWorkout(w); state.teams.forEach(t => t.counts = blankCounts()); state.clocks = {};
 }
 
@@ -1412,7 +1432,7 @@ function countdownCue() {
     if (cdShown !== r && view === "team" && state.round !== r) { state.round = r; editing = null; renderAll(); }
     cdShown = r;
     const n = Math.ceil(countdownLeft(r));
-    const h = `<div class="cd-l">${W.rounds > 1 ? `Round ${r + 1} · ` : ""}Get ready</div><div class="cd-n">${n}</div>${canRunClock() && !screenMode && r === state.round
+    const h = `<div class="cd-l">${W.rounds > 1 ? `Round ${r + 1} · ` : ""}Get ready</div><div class="cd-n">${n}</div>${(canRunClock() && !screenMode || scrUnlocked()) && r === state.round
       ? `<div class="actions"><button class="solid" id="clockNow">Start now</button><button class="ghost" id="clockYes">Cancel</button></div>` : ""}`;
     if (el.dataset.n !== String(n) || el.dataset.h !== h) { el.innerHTML = h; el.dataset.n = n; el.dataset.h = h; }
     el.classList.toggle("last", n <= 3); el.classList.remove("go"); el.hidden = false;
@@ -1557,7 +1577,7 @@ setInterval(() => {
   if (screenMode && W.slot) document.querySelectorAll("[data-slotclock]").forEach(el => { const h = slotClockHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rotstrip]").forEach(el => { const h = rotStripHtml(); if (el.innerHTML !== h) el.innerHTML = h; });
   if (screenMode && W.slot) document.querySelectorAll("[data-rothead]").forEach(el => { const h = esc(rotHead()); if (el.innerHTML !== h) el.innerHTML = h; });
-  countdownCue(); rotCue(); timerCue(); phaseCue(); if (bigOn) renderBig();
+  countdownCue(); rotCue(); timerCue(); phaseCue(); if (bigOn) renderBig(); if (screenMode) renderScrCtl();
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
@@ -1577,15 +1597,15 @@ const HOW = {
 };
 // Ranks every team on each station, then adds the ranks up to points (lowest wins). Tied teams share a rank.
 // A station nobody has a result on yet gives no ranks (instead of #1 for everyone) and no points.
-function ranksOf(s, teams, w = W) {
-  const keys = teams.map(t => score(s, t, w).key), none = score(s, { counts: [] }, w).key;
+function ranksOf(s, teams, w = W, sc = score) {
+  const keys = teams.map(t => sc(s, t, w).key), none = sc(s, { counts: [] }, w).key;
   if (keys.every(k => !cmp(k, none))) return keys.map(() => null);
   return keys.map(k => 1 + keys.filter(o => cmp(o, k) < 0).length);
 }
 // Equal points: the team with more first places goes ahead, then more second places, and so on.
 // Teams still equal share the place.
-function table(w, teams) {
-  const rs = w.stations.filter(s => ranked(s, w)), rk = Object.fromEntries(rs.map(s => [s.id, ranksOf(s, teams, w)]));
+function table(w, teams, sc = score) {
+  const rs = w.stations.filter(s => ranked(s, w)), rk = Object.fromEntries(rs.map(s => [s.id, ranksOf(s, teams, w, sc)]));
   const rows = teams.map((t, i) => ({ t, i, pts: rs.reduce((a, s) => a + (rk[s.id][i] || 0), 0), tb: rs.map(s => rk[s.id][i]).filter(Boolean).sort((a, b) => a - b) }));
   const better = (a, b) => a.pts !== b.pts ? a.pts < b.pts : cmp(a.tb, b.tb) < 0;
   rows.sort((a, b) => better(a, b) ? -1 : better(b, a) ? 1 : 0);
@@ -1729,7 +1749,7 @@ function renderBeat() {
     <div class="beat-pct">${esc(beatHead(c))}<small>of ${esc(shortDate(c.id))} · ${c.rows.filter(x => x.won).length} of ${c.rows.length} stations beaten</small></div>
     <div class="beat-list">${c.rows.map(x => beatRowHtml(x, false)).join("")}</div>
     <p class="note">All teams together against everyone's total on ${esc(shortDate(c.id))}${W.rounds > 1 ? ", over all rounds" : ""}. The percentage is the average over the stations, so each station counts the same.</p>`;
-  renderBeatSet();
+  renderBeatSet(); renderResultsSet();
 }
 function beatScreenHtml() {
   const c = screenMode && challenge();
@@ -1758,7 +1778,58 @@ function renderBeatSet() {
 }
 function setBeat(id) {
   if (!live || !eventId) return;
-  return live.fb.set(path("workout"), JSON.stringify(id ? { ...W, beat: id } : W)).catch(() => {});
+  return live.fb.set(path("workout"), workoutJson(W, { beat: id })).catch(() => {});
+}
+
+// ---- Results view ----
+// The trainer chooses how results show for the session, on every phone and the big screen: with ranking
+// (places, points, #ranks) or without (just each team's numbers, in team order), and ranked by the team's
+// total or by output per athlete (a count station's total divided by the team's athletes, set under Teams).
+// Kept in the session's workout ("results": {"rank": false, "by": "athlete"}) like the group challenge,
+// so it needs no change to the database rules and older pages ignore it.
+const RES_DEFAULT = { rank: true, by: "team" };
+let resOpt = { ...RES_DEFAULT };
+function resOf(json) {
+  try { const o = JSON.parse(json || "{}").results || {}; return { rank: o.rank !== false, by: o.by === "athlete" ? "athlete" : "team" }; }
+  catch { return { ...RES_DEFAULT }; }
+}
+// The workout as stored in the session, with the session's own extras (group challenge, results view).
+function workoutJson(w, o = {}) {
+  const beat = "beat" in o ? o.beat : beatId, r = o.results || resOpt;
+  const results = { ...(r.rank ? {} : { rank: false }), ...(r.by === "athlete" ? { by: "athlete" } : {}) };
+  return JSON.stringify({ ...w, ...(beat ? { beat } : {}), ...(Object.keys(results).length ? { results } : {}) });
+}
+function setResults(o) {
+  const next = { ...resOpt, ...o };
+  if (!live) { resOpt = next; return; }
+  if (!eventId) return;
+  return live.fb.set(path("workout"), workoutJson(W, { results: next })).catch(() => {});
+}
+// Per athlete only means something for count stations, and not in an unranked rotation.
+const hasCount = () => W.stations.some(s => s.type === "count" && ranked(s));
+const byAthlete = () => resOpt.by === "athlete" && sizesOn() && hasCount();
+const rankOn = () => resOpt.rank;
+// A station's result as the standings show and rank it: per athlete on count stations when that's chosen.
+function bscore(s, t, w = W) {
+  const sc = score(s, t, w);
+  if (w !== W || s.type !== "count" || !byAthlete()) return sc;
+  return { key: [sc.key[0] / athletes(t)], text: perAthlete(s, t) };
+}
+// The standings table for the board and the big screen: ranked as chosen, or the teams in order without places.
+const boardTable = () => rankOn() ? table(W, state.teams, bscore) : { rk: {}, rows: state.teams.map((t, i) => ({ t, i })), n: 0 };
+const resOptsHtml = () => `<div class="res-opts">
+    <div class="res-row"><span>Ranking</span><div class="seg small" role="group" aria-label="Ranking">
+      <button data-res="rank:1" aria-pressed="${rankOn()}">On</button><button data-res="rank:0" aria-pressed="${!rankOn()}">Off</button></div></div>
+    ${sizesOn() && hasCount() ? `<div class="res-row"><span>Results by</span><div class="seg small" role="group" aria-label="Results by">
+      <button data-res="by:team" aria-pressed="${resOpt.by !== "athlete"}">Team</button><button data-res="by:athlete" aria-pressed="${resOpt.by === "athlete"}">Per athlete</button></div></div>` : ""}
+  </div>`;
+function renderResultsSet() {
+  const el = $("resultsCard");
+  el.hidden = screenMode || !(view === "local" || trainerOn()) || !W.stations.some(s => ranked(s));
+  if (el.hidden) return;
+  el.innerHTML = `<h2>Results</h2>
+    <p class="note">How the standings show on every phone and the big screen.${sizesOn() && hasCount() ? " Per athlete divides each count station's total by the team's athletes (set under Teams), so a short team isn't behind; times and rounds stay per team." : ""}</p>
+    ${resOptsHtml()}`;
 }
 
 // ---- QR codes ----
@@ -1973,7 +2044,7 @@ function renderScreen() {
       <p class="scr-sub">${view === "missing" ? "Today's session hasn't started yet. This screen switches to it by itself." : view === "error" ? esc(liveMsg) : "Connecting…"}</p>`;
     return;
   }
-  const { rk, rows, n } = table(W, state.teams), one = n === 1, any = anyScores() && n > 0, pa = perAthleteOn();
+  const { rk, rows, n } = boardTable(), one = n === 1, any = anyScores() && n > 0, ba = byAthlete(), pa = perAthleteOn() || ba;
   const sub = [eventId ? eventLabel(eventId) : "", W.rounds > 1 && timed() ? "Round " + (state.round + 1) : "", connected ? "" : "offline, will catch up"].filter(Boolean).join(" · ");
   el.innerHTML = `
     <div class="scr-head"><div><div class="scr-title">${esc(W.name)}</div><div class="scr-sub">${esc(sub)}</div></div>
@@ -1988,16 +2059,66 @@ function renderScreen() {
       ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
     <div class="scr-main">
       <div class="tbl-wrap"><table class="scr-tbl">
-        <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
+        <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitHead(s, ba))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
         <tbody>${rows.map(({ t, i, pts, place }) => `
           <tr class="${any && place === 1 ? "lead" : ""}"><td class="place">${any ? place : ""}</td>
             <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
-            ${W.stations.map(s => `<td>${esc(score(s, t).text)}${splitOf(s, t) ? `<span class="split"> (${esc(splitOf(s, t))})</span>` : ""}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
+            ${W.stations.map(s => `<td>${cellHtml(s, t, ba, pa, true)}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
             ${n > 1 ? `<td class="pts">${any ? pts : "–"}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
       ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
     </div>`}`;
   if (screenJoin()) drawQR($("scrQr"), screenJoin());
+  renderScrCtl();
+}
+// A count station's cell: per athlete big with the total small, or the total big with "x each" small.
+const unitHead = (s, ba) => ba && s.type === "count" ? `${unitOf(s)} each` : unitOf(s);
+function cellHtml(s, t, ba, pa, screen) {
+  const sp = splitOf(s, t) ? (screen ? `<span class="split"> (${esc(splitOf(s, t))})</span>` : `<span class="avg">(${esc(splitOf(s, t))})</span>`) : "";
+  if (ba && s.type === "count") return `${esc(perAthlete(s, t))}${badge(s, t)}<span class="avg tot">total ${esc(score(s, t).text)}${splitOf(s, t) ? ` (${esc(splitOf(s, t))})` : ""}</span>`;
+  return screen ? `${esc(score(s, t).text)}${sp}${badge(s, t)}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}`
+    : `${esc(score(s, t).text)}${badge(s, t)}${sp}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}`;
+}
+
+// ---- Big screen controls ----
+// A tablet used as the big screen can pause and resume the clock (and start it) and change the results view.
+// The rules let only trainer sign-ins write those, so the screen asks for the trainer PIN once, like a trainer
+// phone, and keeps it under its own sign-in. Without the PIN it only shows the faint Controls button.
+let scrOpen = false;
+const scrUnlocked = () => !!live && screenMode && pinState === "open";
+const scrClockOn = () => timed() && !!eventId && eventId.startsWith(today()) && view === "screen";
+function scrClockBtns() {
+  if (!scrClockOn()) return "";
+  const r = state.round;
+  // During the countdown the countdown itself shows Start now and Cancel.
+  if (countdownLeft(r)) return "";
+  if (!clockStart(r)) return `<button class="solid" id="clockStart">Start${W.rounds > 1 ? " round " + (r + 1) : ""}</button>`;
+  if (paused(r)) return `<button class="solid" id="clockResume">Resume</button>`;
+  if (timerDone()) return `<button class="solid" id="clockStart">Start again</button>`;
+  const a0 = W.slot && state.teams.length ? rotAt(0) : null;
+  if (a0 && a0.phase === "done") return "";
+  if (!W.slot && !W.timer && clockEnd() && elapsed(r) >= clockEnd()) return "";
+  return `<button class="solid" id="clockPause">Pause</button>`;
+}
+function renderScrCtl() {
+  const el = $("scrCtl");
+  if (!screenMode) { el.innerHTML = ""; return; }
+  // Typing the PIN: a live update mustn't wipe what's typed.
+  if (document.activeElement?.id === "scrPin") return;
+  let h;
+  if (!live || view !== "screen") h = "";
+  else if (!scrUnlocked()) h = (scrOpen ? `<div class="sc-panel"><h2>Control from this screen</h2>
+      ${pinState === "noauth" ? `<p class="note">This screen can't sign in. In the Firebase console, Authentication > Anmeldemethode: switch on Anonym, then reload.</p>`
+        : pinState === "check" ? `<p class="note">Checking this screen…</p>` : `
+      <p class="note">Type the trainer PIN once to pause, resume and start the clock and change the results from this screen.</p>
+      <form class="actions" id="scrPinForm"><input id="scrPin" class="date" type="password" inputmode="numeric" autocomplete="off" maxlength="30" aria-label="Trainer PIN" placeholder="PIN">
+        <button class="solid">Unlock</button></form>
+      ${pinMsg ? `<p class="note" role="status">${esc(pinMsg)}</p>` : ""}`}</div>` : "")
+      + `<div class="sc-bar"><button class="ghost" id="scrCtlToggle">${scrOpen ? "Close" : "Controls"}</button></div>`;
+  else h = (scrOpen ? `<div class="sc-panel"><h2>Results</h2>${W.stations.some(s => ranked(s)) ? resOptsHtml() : `<p class="note">This workout isn't ranked.</p>`}</div>` : "")
+      + `<div class="sc-bar">${scrClockBtns()}<button class="ghost" id="scrCtlToggle">${scrOpen ? "Close" : "Results"}</button></div>`;
+  el.classList.toggle("open", scrOpen);
+  if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
 }
 
 // ---- Glitter ----
@@ -2071,27 +2192,30 @@ function celebrate() {
 
 function renderStandings() {
   if (!state.teams.length) { $("standings").innerHTML = ""; return; }
-  const { rk, rows, n } = table(W, state.teams), one = n === 1, pa = perAthleteOn();
+  const { rk, rows, n } = boardTable(), one = n === 1, ba = byAthlete(), pa = perAthleteOn() || ba;
   const any = anyScores();
   // Points come right after the team, so they show on a phone without scrolling sideways.
   $("standings").innerHTML = `
-    <thead><tr><th>Team</th>${n ? `<th>${one ? "Rank" : "Points"}</th>` : ""}${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitOf(s))}</th>`).join("")}</tr></thead>
+    <thead><tr><th>Team</th>${n ? `<th>${one ? "Rank" : "Points"}</th>` : ""}${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitHead(s, ba))}</th>`).join("")}</tr></thead>
     <tbody>${rows.map(({ t, i, pts, place }) => `
       <tr class="${n && any && place === 1 ? "lead" : ""}">
         <td><span class="tname" style="${tc(i)}"><span class="dot"></span>${esc(t.name)}</span>${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
         ${n ? `<td class="pts">${!any ? "–" : one ? place : pts}${any && !one ? `<span class="rk">${ordinal(place)}</span>` : ""}</td>` : ""}
-        ${W.stations.map(s => `<td>${esc(score(s, t).text)}${badge(s, t)}${splitOf(s, t) ? `<span class="avg">(${esc(splitOf(s, t))})</span>` : ""}${pa && s.type === "count" ? `<span class="avg">${perAthlete(s, t)} each</span>` : ""}${rk[s.id]?.[i] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
+        ${W.stations.map(s => `<td>${cellHtml(s, t, ba, pa, false)}${rk[s.id]?.[i] && !one ? `<span class="rk">#${rk[s.id][i]}</span>` : ""}</td>`).join("")}
       </tr>`).join("")}</tbody>`;
   const over = W.rounds > 1 ? " over all rounds" : "";
   const free = W.stations.filter(s => !ranked(s));
   const freeNote = free.length ? ` ${free.map(s => s.name).join(" and ")} ${free.length > 1 ? "are" : "is"} each team's own progress and not ranked.` : "";
   const ranks1 = W.stations.find(ranked);
-  $("standNote").textContent = (!n ? `This workout isn't ranked: each team follows its own progress${over}.`
+  const anyRanked = W.stations.some(s => ranked(s));
+  $("standNote").textContent = (!n && anyRanked && !rankOn() ? `Ranking is off for this session: each team's results${over}, without places.`
+    : !n ? `This workout isn't ranked: each team follows its own progress${over}.`
     : one && !free.length
     ? `Teams are ranked by their result${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
     : one ? `Teams are ranked by ${ranks1.name}${over}: ${HOW[ranks1.type](ranks1)}. Tied teams share a rank.`
     : `Each column is the team's result${over}, with its rank below. Points add up the ranks across the ${n} ranked stations, so the lowest score wins. Equal points: more first places wins, then more second places.`) + (n ? freeNote : "")
-    + (pa ? " \"each\" is the total divided by the team's athletes (set under Teams); the ranking uses the totals." : "");
+    + (ba ? ` Count stations show the output per athlete (the total divided by the team's athletes, set under Teams)${n ? " and rank by it" : ""}; times and rounds stay per team.`
+      : pa ? ` "each" is the total divided by the team's athletes (set under Teams)${n ? "; the ranking uses the totals" : ""}.` : "");
   celebrate();
 }
 
@@ -2617,6 +2741,8 @@ document.addEventListener("click", e => {
   else if (b.id === "addPast") return addPastSession($("pastDate").value, b);
   else if (b.id === "beatSet") return setBeat($("beatPick")?.value || "");
   else if (b.id === "beatOff") return setBeat(null);
+  else if (b.dataset.res) { const [k, v] = b.dataset.res.split(":"); setResults(k === "rank" ? { rank: v === "1" } : { by: v }); if (live) return; }
+  else if (b.id === "scrCtlToggle") { scrOpen = !scrOpen; pinMsg = ""; renderScrCtl(); if (scrOpen) $("scrPin")?.focus(); return; }
   else if (b.id === "bigOn") { openBig(); editing = null; }
   else if (b.id === "bigOff") { editing = null; if (bigInHistory()) return closeBig(); setBig(false); }
   else if (b.id === "clockStart") startClock();
@@ -2673,6 +2799,13 @@ document.addEventListener("click", e => {
 });
 
 document.addEventListener("submit", e => {
+  if (e.target.id === "scrPinForm") {
+    e.preventDefault();
+    const pin = $("scrPin").value.trim(); if (!pin) return;
+    pinMsg = "Checking…"; $("scrPin").blur(); renderScrCtl();
+    // Unlocked: the panel closes, and the bar shows the clock buttons.
+    return checkPin(pin).then(() => { if (scrUnlocked()) { scrOpen = false; renderScrCtl(); } });
+  }
   if (e.target.id !== "pinForm") return;
   e.preventDefault();
   const pin = $("pinIn").value.trim(); if (!pin) return;
