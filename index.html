@@ -421,6 +421,84 @@ body.screen.theme-neon .lane-t .tname, body.screen.theme-neon .rot-strip .tname,
 body.screen.theme-neon .lane-t .nick { font-size: .8em; }
 body.screen.theme-neon .rot-head { color: #fff; text-shadow: 0 0 .3em rgb(255 63 164 / .7), 0 1px 2px #000; }
 body.screen.theme-neon .strip-cell.moving { background: color-mix(in srgb, var(--neon-teal) 22%, rgb(22 10 40 / .82)); outline-color: var(--neon-teal); }
+/* ---- Christmas: a big screen theme (see SCREEN_THEMES in the script) ----
+   Original art in CSS + inline SVG: a snowy night with fairy lights, falling snow, and the sled map in place of the QR code. */
+#xmasScene { display: none; }
+body.screen.theme-xmas {
+  --bg: #0d1b33; --surface: rgb(12 28 54 / .8); --fg: #f6fbff; --muted: #bcd3ea; --line: rgb(180 210 240 / .25);
+  --accent: #f5c542; --accent-fg: #10203a; --press: rgb(255 255 255 / .1); --danger: #ff6b55; --go: #e8323f;
+  --xm-red: #ff4d5e; --xm-gold: #f5c542; --xm-green: #3ecf6e; --xm-ice: #bfe3ff;
+  color-scheme: dark; background: #0b1630;
+}
+/* Christmas team colours, on every phone and the screen: 1 red, 2 green, 3 gold, 4 ice blue, 5 ginger, 6 plum. */
+body.theme-teams-xmas { --t1: #d6283a; --t2: #1f8f4a; --t3: #b07d00; --t4: #1c7ed6; --t5: #c2621f; --t6: #8e44ad; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body.theme-teams-xmas { --t1: #ff5d6c; --t2: #4fd683; --t3: #f5c542; --t4: #74c6ff; --t5: #f0a060; --t6: #c88bff; } }
+:root[data-theme="dark"] body.theme-teams-xmas, body.screen.theme-xmas.theme-teams-xmas { --t1: #ff5d6c; --t2: #4fd683; --t3: #f5c542; --t4: #74c6ff; --t5: #f0a060; --t6: #c88bff; }
+body.screen.theme-xmas #xmasScene { display: block; position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+#xmasScene svg { position: absolute; display: block; }
+#xmasScene .sky { inset: 0; width: 100%; height: 100%; }
+#xmasScene .lights { top: 0; left: 0; width: 100%; height: 9vh; }
+#xmasScene .snow { position: absolute; inset: 0; }
+#xmasScene .snow i { position: absolute; top: -10px; border-radius: 50%; background: #fff; box-shadow: 0 0 4px rgb(255 255 255 / .7); }
+#xmasScene .tint { position: absolute; inset: 0; opacity: 0; transition: opacity 4s ease; }
+body.screen.theme-xmas.phase-rest #xmasScene .tint { opacity: .5; background: linear-gradient(180deg, rgb(40 90 140 / .6), rgb(150 200 240 / .35)); transition-duration: .4s; }
+body.screen.theme-xmas.phase-go #xmasScene .tint { opacity: .7; background: radial-gradient(ellipse at 50% 70%, rgb(232 50 63 / .85), rgb(110 10 20 / .75)); transition-duration: .2s; }
+@media (prefers-reduced-motion: no-preference) {
+  #xmasScene .snow i { animation-name: xm-fall, xm-sway; animation-timing-function: linear, ease-in-out; animation-iteration-count: infinite; animation-direction: normal, alternate; }
+  #xmasScene .bulb { animation: xm-twinkle 2.4s ease-in-out infinite alternate; }
+  #xmasScene .bulb:nth-child(3n) { animation-delay: -.8s; } #xmasScene .bulb:nth-child(3n+1) { animation-delay: -1.6s; }
+  .scr-sled .aurora { animation: xm-aurora 9s ease-in-out infinite alternate; }
+}
+@media (prefers-reduced-motion: reduce) { #xmasScene .snow i { top: auto; bottom: calc(var(--y, 50) * 1%); } }
+@keyframes xm-fall { from { transform: translateY(-2vh); } to { transform: translateY(104vh); } }
+@keyframes xm-sway { from { margin-left: -12px; } to { margin-left: 12px; } }
+@keyframes xm-twinkle { from { opacity: .45; } to { opacity: 1; } }
+@keyframes xm-aurora { from { opacity: .5; transform: translateX(-6px); } to { opacity: 1; transform: translateX(6px); } }
+body.screen.theme-xmas, body.screen.theme-xmas.phase-rest, body.screen.theme-xmas.phase-go { background: #0b1630; }
+body.screen.theme-xmas .wrap { padding-top: max(2.5vw, 7vh); }
+body.screen.theme-xmas .scr-title { color: #fff; text-shadow: 0 0 .2em rgb(245 197 66 / .55), 0 .05em 0 #7a1010; }
+body.screen.theme-xmas .scr-sub { color: var(--xm-ice); text-shadow: 0 1px 2px #000; }
+body.screen.theme-xmas .scr-clock { color: #fff; text-shadow: 0 0 .25em rgb(245 197 66 / .6); }
+body.screen.theme-xmas .phase-tag { color: #fff; text-shadow: 0 0 .2em var(--xm-red), 0 0 .5em var(--xm-red); }
+body.screen.theme-xmas .scr-tbl, body.screen.theme-xmas .scr-join, body.screen.theme-xmas .scr-beat,
+body.screen.theme-xmas .nownext.big, body.screen.theme-xmas .rot-strip > *, body.screen.theme-xmas .rot-cell {
+  background: var(--surface); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border: 1px solid rgb(245 197 66 / .45); box-shadow: 0 0 0 1px rgb(255 255 255 / .06) inset, 0 6px 26px rgb(0 0 0 / .35);
+}
+body.screen.theme-xmas .scr-tbl { border-collapse: separate; border-spacing: 0; overflow: hidden; }
+body.screen.theme-xmas .scr-tbl th { color: var(--xm-gold); }
+body.screen.theme-xmas .scr-tbl td, body.screen.theme-xmas .scr-tbl th { border-bottom-color: rgb(190 220 250 / .18); }
+body.screen.theme-xmas .scr-tbl tr.lead td { background: rgb(232 50 63 / .2); }
+body.screen.theme-xmas .scr-tbl tr.lead td.pts { color: var(--xm-gold); text-shadow: 0 0 .3em rgb(245 197 66 / .7); }
+body.screen.theme-xmas .scr-tbl .tname { color: var(--tc); }
+body.screen.theme-xmas .cd { background: rgb(11 22 48 / .9); }
+body.screen.theme-xmas .cd-n { color: #fff; text-shadow: 0 0 .15em var(--xm-gold), 0 0 .35em var(--xm-red); }
+body.screen.theme-xmas .cd.go { background: rgb(232 50 63 / .85); }
+body.screen.theme-xmas .sc-panel { background: #12264a; }
+body.screen.theme-xmas .nick { display: block; font-family: var(--display); font-weight: 800; text-transform: uppercase; letter-spacing: .04em;
+  font-size: .5em; color: var(--tc); white-space: nowrap; opacity: .9; }
+body.screen.theme-xmas .lane-c { background: color-mix(in srgb, var(--tc) 24%, rgb(12 28 54 / .85)); border: 1px solid color-mix(in srgb, var(--tc) 50%, transparent);
+  border-left: 5px solid var(--tc); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+body.screen.theme-xmas .lane-h { color: var(--xm-gold); }
+body.screen.theme-xmas .lane-t { flex-direction: column; align-items: flex-start; justify-content: center; }
+body.screen.theme-xmas .lane-t .tname, body.screen.theme-xmas .rot-strip .tname, body.screen.theme-xmas .rot-cell .tname { color: var(--tc); }
+body.screen.theme-xmas .lane-t .nick { font-size: .8em; }
+body.screen.theme-xmas .rot-head { color: #fff; text-shadow: 0 1px 2px #000; }
+body.screen.theme-xmas .strip-cell.moving { background: color-mix(in srgb, var(--xm-gold) 20%, rgb(12 28 54 / .85)); outline-color: var(--xm-gold); }
+body.screen.theme-xmas .qr { box-shadow: 0 0 18px rgb(245 197 66 / .45); }
+/* The sled map in the QR code's place. */
+.scr-sled { display: flex; flex-direction: column; align-items: stretch; gap: .5vw; width: clamp(180px, 19vw, 360px); }
+.sled-h { font-family: var(--display); font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: clamp(.9rem, 1.4vw, 1.6rem); color: var(--xm-gold, var(--fg)); }
+.sled-map { display: block; width: 100%; height: auto; max-height: 40vh; align-self: center; border-radius: 10px; }
+.sled-track { fill: none; stroke: #8fa9c4; stroke-width: 5; stroke-linecap: round; stroke-dasharray: 2 7; }
+.sled-trail { fill: none; stroke: #f5c542; stroke-width: 5; stroke-linecap: round; filter: drop-shadow(0 0 3px rgb(245 197 66 / .9)); }
+.sled-flag text { fill: #10203a; font-family: var(--display); }
+.sled-m { font-family: var(--display); font-weight: 800; font-size: clamp(1.8rem, 3.6vw, 4.2rem); line-height: .95; font-variant-numeric: tabular-nums; }
+.sled-sub { color: var(--muted); font-weight: 600; font-size: clamp(.8rem, 1.1vw, 1.3rem); }
+.sled-legs { display: flex; flex-wrap: wrap; justify-content: center; gap: .3em 1em; font-size: clamp(.8rem, 1.1vw, 1.3rem); color: var(--muted); font-variant-numeric: tabular-nums; }
+.sled-legs b { color: var(--fg); }
+.sled-btn { align-self: center; font-size: clamp(.75rem, .9vw, 1rem); padding: .4em 1em; opacity: .55; margin-top: .4vw; }
+.sled-btn:hover, .sled-btn:focus-visible { opacity: 1; }
 </style>
 </head><body>
 <template id="neonSceneTpl">
@@ -479,6 +557,26 @@ body.screen.theme-neon .strip-cell.moving { background: color-mix(in srgb, var(-
     <path d="M212 304 C275 260 345 262 390 300 C335 285 275 290 214 314 Z"/>
     <path d="M210 306 C245 330 270 380 275 445 C255 390 232 355 206 320 Z"/>
     <circle cx="208" cy="312" r="11"/></g></svg>
+  <div class="tint"></div>
+</div>
+</template>
+<template id="xmasSceneTpl">
+<!-- Christmas scene for the big screen theme: original SVG, shown only while the theme is on. -->
+<div id="xmasScene" aria-hidden="true">
+  <svg class="sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+    <defs>
+      <linearGradient id="xsSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#070f24"/><stop offset=".5" stop-color="#0f2447"/><stop offset="1" stop-color="#1b3d66"/></linearGradient>
+      <radialGradient id="xsMoon"><stop offset="0" stop-color="#fffbe8"/><stop offset=".6" stop-color="#f3ecc8"/><stop offset="1" stop-color="#f3ecc8" stop-opacity="0"/></radialGradient>
+    </defs>
+    <rect width="1600" height="900" fill="url(#xsSky)"/>
+    <g fill="#fff" opacity=".75"><circle cx="812" cy="85" r="1.1"/><circle cx="95" cy="345" r="1.1"/><circle cx="593" cy="274" r="1.1"/><circle cx="1107" cy="120" r="1.4"/><circle cx="1147" cy="477" r="1.1"/><circle cx="211" cy="357" r="1.1"/><circle cx="762" cy="109" r="0.9"/><circle cx="1155" cy="90" r="1.1"/><circle cx="1016" cy="408" r="1.7"/><circle cx="1591" cy="220" r="1.7"/><circle cx="1199" cy="292" r="1.4"/><circle cx="613" cy="187" r="1.1"/><circle cx="1431" cy="459" r="1.1"/><circle cx="167" cy="354" r="1.4"/><circle cx="1075" cy="313" r="1.4"/><circle cx="1493" cy="289" r="1.4"/><circle cx="1247" cy="97" r="0.9"/><circle cx="1048" cy="274" r="1.1"/><circle cx="1550" cy="235" r="1.1"/><circle cx="1001" cy="275" r="0.9"/><circle cx="1368" cy="99" r="1.4"/><circle cx="696" cy="415" r="1.4"/><circle cx="1217" cy="314" r="1.7"/><circle cx="140" cy="490" r="0.9"/><circle cx="552" cy="302" r="0.9"/><circle cx="124" cy="434" r="1.4"/><circle cx="1325" cy="355" r="1.7"/><circle cx="582" cy="426" r="1.7"/><circle cx="1369" cy="237" r="0.9"/><circle cx="945" cy="241" r="1.1"/><circle cx="1251" cy="119" r="1.7"/><circle cx="120" cy="171" r="1.4"/><circle cx="264" cy="438" r="1.1"/><circle cx="814" cy="260" r="1.7"/><circle cx="165" cy="145" r="1.7"/><circle cx="822" cy="341" r="1.4"/><circle cx="280" cy="479" r="1.7"/><circle cx="1126" cy="202" r="1.7"/><circle cx="734" cy="409" r="1.7"/><circle cx="472" cy="137" r="0.9"/></g>
+    <circle cx="1290" cy="190" r="60" fill="url(#xsMoon)" opacity=".55"/>
+    <path d="M0 760 C220 700 420 740 640 720 S1100 690 1300 720 S1520 740 1600 730 V900 H0 Z" fill="#c9dbee" opacity=".22"/>
+    <path d="M0 820 C260 780 520 810 800 795 S1340 770 1600 800 V900 H0 Z" fill="#dfeaf6" opacity=".3"/>
+    <g><path d="M-20 750 L22 861 H-62 Z" fill="#0a2a24"/><path d="M-20 750 L-7 786 H-33 Z" fill="#e8f2fb" opacity=".9"/><path d="M35 709 L81 829 H-11 Z" fill="#0a2a24"/><path d="M35 709 L49 747 H21 Z" fill="#e8f2fb" opacity=".9"/><path d="M90 790 L119 866 H61 Z" fill="#0a2a24"/><path d="M90 790 L99 814 H81 Z" fill="#e8f2fb" opacity=".9"/><path d="M145 726 L197 864 H93 Z" fill="#0a2a24"/><path d="M145 726 L162 770 H128 Z" fill="#e8f2fb" opacity=".9"/><path d="M200 717 L244 833 H156 Z" fill="#0a2a24"/><path d="M200 717 L214 754 H186 Z" fill="#e8f2fb" opacity=".9"/><path d="M255 761 L284 838 H226 Z" fill="#0a2a24"/><path d="M255 761 L264 786 H246 Z" fill="#e8f2fb" opacity=".9"/><path d="M310 771 L347 868 H273 Z" fill="#0a2a24"/><path d="M310 771 L322 802 H298 Z" fill="#e8f2fb" opacity=".9"/><path d="M365 762 L396 843 H334 Z" fill="#0a2a24"/><path d="M365 762 L375 788 H355 Z" fill="#e8f2fb" opacity=".9"/><path d="M1240 743 L1287 866 H1193 Z" fill="#0a2a24"/><path d="M1240 743 L1255 782 H1225 Z" fill="#e8f2fb" opacity=".9"/><path d="M1295 765 L1333 865 H1257 Z" fill="#0a2a24"/><path d="M1295 765 L1307 797 H1283 Z" fill="#e8f2fb" opacity=".9"/><path d="M1350 703 L1403 843 H1297 Z" fill="#0a2a24"/><path d="M1350 703 L1367 748 H1333 Z" fill="#e8f2fb" opacity=".9"/><path d="M1405 757 L1434 834 H1376 Z" fill="#0a2a24"/><path d="M1405 757 L1414 782 H1396 Z" fill="#e8f2fb" opacity=".9"/><path d="M1460 771 L1492 856 H1428 Z" fill="#0a2a24"/><path d="M1460 771 L1470 798 H1450 Z" fill="#e8f2fb" opacity=".9"/><path d="M1515 680 L1572 830 H1458 Z" fill="#0a2a24"/><path d="M1515 680 L1533 728 H1497 Z" fill="#e8f2fb" opacity=".9"/><path d="M1570 723 L1625 867 H1515 Z" fill="#0a2a24"/><path d="M1570 723 L1587 769 H1553 Z" fill="#e8f2fb" opacity=".9"/><path d="M1625 690 L1679 833 H1571 Z" fill="#0a2a24"/><path d="M1625 690 L1642 736 H1608 Z" fill="#e8f2fb" opacity=".9"/></g>
+  </svg>
+  <svg class="lights" viewBox="0 0 1600 90" preserveAspectRatio="none"><path d="M0 8 Q200 58 400 8 M400 8 Q600 58 800 8 M800 8 Q1000 58 1200 8 M1200 8 Q1400 58 1600 8" fill="none" stroke="#2b3440" stroke-width="2.5"/><g class="bulb"><rect x="38" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="40" cy="29" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="78" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="80" cy="35" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="118" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="120" cy="39" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="158" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="160" cy="42" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="198" y="33" width="5" height="5" fill="#2b3440"/><ellipse cx="200" cy="43" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="238" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="240" cy="42" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="278" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="280" cy="39" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="318" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="320" cy="35" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="358" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="360" cy="29" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="438" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="440" cy="29" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="478" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="480" cy="35" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="518" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="520" cy="39" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="558" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="560" cy="42" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="598" y="33" width="5" height="5" fill="#2b3440"/><ellipse cx="600" cy="43" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="638" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="640" cy="42" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="678" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="680" cy="39" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="718" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="720" cy="35" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="758" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="760" cy="29" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="838" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="840" cy="29" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="878" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="880" cy="35" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="918" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="920" cy="39" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="958" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="960" cy="42" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="998" y="33" width="5" height="5" fill="#2b3440"/><ellipse cx="1000" cy="43" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="1038" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="1040" cy="42" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="1078" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="1080" cy="39" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="1118" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="1120" cy="35" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="1158" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="1160" cy="29" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="1238" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="1240" cy="29" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="1278" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="1280" cy="35" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="1318" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="1320" cy="39" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="1358" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="1360" cy="42" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g><g class="bulb"><rect x="1398" y="33" width="5" height="5" fill="#2b3440"/><ellipse cx="1400" cy="43" rx="5" ry="8" fill="#3ecf6e" style="filter:drop-shadow(0 0 6px #3ecf6e)"/></g><g class="bulb"><rect x="1438" y="32" width="5" height="5" fill="#2b3440"/><ellipse cx="1440" cy="42" rx="5" ry="8" fill="#f5c542" style="filter:drop-shadow(0 0 6px #f5c542)"/></g><g class="bulb"><rect x="1478" y="29" width="5" height="5" fill="#2b3440"/><ellipse cx="1480" cy="39" rx="5" ry="8" fill="#74c6ff" style="filter:drop-shadow(0 0 6px #74c6ff)"/></g><g class="bulb"><rect x="1518" y="25" width="5" height="5" fill="#2b3440"/><ellipse cx="1520" cy="35" rx="5" ry="8" fill="#ff9a3c" style="filter:drop-shadow(0 0 6px #ff9a3c)"/></g><g class="bulb"><rect x="1558" y="19" width="5" height="5" fill="#2b3440"/><ellipse cx="1560" cy="29" rx="5" ry="8" fill="#ff4d5e" style="filter:drop-shadow(0 0 6px #ff4d5e)"/></g></svg>
+  <div class="snow"></div>
   <div class="tint"></div>
 </div>
 </template>
@@ -745,31 +843,55 @@ function eventLabel(id) {
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const tc = i => `--tc: var(--t${(i % COLORS) + 1})`;
-// ---- Neon Coast: a one-week big screen theme ----
-// On the big screen only, from `from` to `to` (both days included, Berlin time). After `to` it switches
-// itself off. To end it sooner set SCREEN_THEME to null; ?theme=off or ?theme=neon on the screen link overrides it.
-const SCREEN_THEME = { name: "neon", from: "2026-11-19", to: "2026-11-26", nicknames: true };
-// Theme team nicknames by team colour (pink, orange, teal, purple, yellow, blue). ?names=off hides them.
-const NEON_NICKS = ["Flamingo Syndicate", "Sunset Outlaws", "Riptide Runners", "Midnight Getaway", "Heat Wave Heist", "Palm Street Crew"];
+// ---- Big screen themes ----
+// A theme runs on the big screen from `from` to `to` (both days included, Berlin time); `to: null` keeps it on
+// until it's removed here. To end one sooner delete its entry. ?theme=off, ?theme=neon or ?theme=xmas on the
+// screen link overrides the dates. Its team colours go on every phone too, so a team's colour is the same everywhere.
+const SCREEN_THEMES = [
+  { name: "neon", from: "2026-11-19", to: "2026-11-23", nicknames: true },
+  // Christmas: snow, fairy lights, and a sled travelling the sled lanes to the North Pole instead of the QR code.
+  { name: "xmas", from: "2026-11-24", to: null, nicknames: true },
+];
+// Theme team nicknames by team colour. ?names=off hides them.
+const THEME_NICKS = {
+  neon: ["Flamingo Syndicate", "Sunset Outlaws", "Riptide Runners", "Midnight Getaway", "Heat Wave Heist", "Palm Street Crew"],
+  // red, green, gold, ice blue, ginger, plum
+  xmas: ["Candy Cane Crew", "Mistletoe Mob", "Tinsel Titans", "Snowball Squad", "Gingerbread Gang", "Sugar Plum Sprinters"],
+};
 const berlinDay = () => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin" }).format(new Date()); } catch { return today(); } };
 function screenTheme() {
   const q = params.get("theme");
   if (q === "off") return null;
-  if (q === "neon") return "neon";
-  const t = SCREEN_THEME, d = berlinDay();
-  return t && d >= t.from && d <= t.to ? t.name : null;
+  if (THEME_NICKS[q]) return q;
+  const d = berlinDay();
+  return SCREEN_THEMES.find(t => d >= t.from && (!t.to || d <= t.to))?.name || null;
 }
 function applyScreenTheme() {
-  const th = screenTheme() === "neon", on = screenMode && th;
-  // The theme's team colours go on every phone too, so a team's colour is the same everywhere.
-  document.body.classList.toggle("theme-teams", th);
-  document.body.classList.toggle("theme-neon", on);
-  const scene = document.getElementById("neonScene");
-  if (on && !scene) document.body.insertAdjacentHTML("afterbegin", $("neonSceneTpl").innerHTML);
-  if (!on && scene) scene.remove();
+  const th = screenTheme();
+  document.body.classList.toggle("theme-teams", th === "neon");
+  document.body.classList.toggle("theme-teams-xmas", th === "xmas");
+  for (const n of Object.keys(THEME_NICKS)) {
+    const on = screenMode && th === n, id = n + "Scene", scene = document.getElementById(id);
+    document.body.classList.toggle("theme-" + n, on);
+    if (on && !scene) { document.body.insertAdjacentHTML("afterbegin", $(id + "Tpl").innerHTML); if (n === "xmas") makeSnow(); }
+    if (!on && scene) scene.remove();
+  }
 }
-const neonNick = i => screenMode && SCREEN_THEME?.nicknames && params.get("names") !== "off" && screenTheme() === "neon"
-  ? `<span class="nick">${esc(NEON_NICKS[i % COLORS])}</span>` : "";
+const themeNick = i => {
+  const th = screenTheme();
+  return screenMode && th && SCREEN_THEMES.find(t => t.name === th)?.nicknames !== false && params.get("names") !== "off"
+    ? `<span class="nick">${esc(THEME_NICKS[th][i % COLORS])}</span>` : "";
+};
+// Falling snow on the Christmas screen: a few dozen flakes, each its own size, speed and drift.
+function makeSnow() {
+  const el = document.querySelector("#xmasScene .snow");
+  if (!el) return;
+  el.innerHTML = Array.from({ length: 70 }, () => {
+    const z = Math.random(), size = (2 + z * 5).toFixed(1);
+    return `<i style="--y:${(Math.random() * 96).toFixed(1)};left:${(Math.random() * 100).toFixed(1)}%;width:${size}px;height:${size}px;opacity:${(.35 + z * .55).toFixed(2)};` +
+      `animation-duration:${(9 + (1 - z) * 12).toFixed(1)}s,${(3 + Math.random() * 4).toFixed(1)}s;animation-delay:-${(Math.random() * 20).toFixed(1)}s,-${(Math.random() * 5).toFixed(1)}s"></i>`;
+  }).join("");
+}
 applyScreenTheme();
 const val = (t, r, key) => t.counts[r]?.[key] || 0;
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
@@ -2031,6 +2153,102 @@ function renderQrCard() {
 // ---- Big screen ----
 // Its QR code carries the join code from the big-screen link, once the screen has joined with it.
 const screenJoin = () => view !== "screen" ? "" : joinState === "in" ? joinUrl(joinCode) : joinState === "open" ? baseUrl() : "";
+// ---- Christmas sled (big screen, Christmas theme) ----
+// The QR code's place on the screen shows a sled pulled toward the North Pole by every sled lane of the session:
+// all teams and all rounds added up, so it goes further each round. Flags mark where each round ended.
+// Before the class has any score or a running clock the QR code is still there to join; once it's going,
+// a tap on "QR to join" shows the code for 30 seconds.
+const LANE_M = 6; // one sled lane is 6 m in our setup
+const sledStation = () => W.stations.find(s => s.type === "count" && /sled|schlitten/i.test(s.name + " " + s.id))
+  || W.stations.find(s => s.type === "count" && s.unit === "lanes");
+function sledData() {
+  const s = sledStation();
+  if (!s) return null;
+  const per = roundList().map(r => state.teams.reduce((a, t) => a + val(t, r, s.id), 0)), lanes = per.reduce((a, b) => a + b, 0);
+  // The North Pole is 125 m per team and round away (1 km for 4 teams and 2 rounds), so every class has a fair goal.
+  const goal = Math.max(250, Math.ceil(125 * Math.max(1, state.teams.length) * W.rounds / 50) * 50);
+  return { s, per, lanes, m: lanes * LANE_M, goal };
+}
+let qrPeek = 0, qrPeekTimer = 0;
+const classGoing = () => anyScores() || roundList().some(r => clockStart(r) || countdownLeft(r));
+const showSled = () => screenMode && screenTheme() === "xmas" && (view === "screen" || view === "local") && !!sledStation()
+  && (!screenJoin() || (classGoing() && Date.now() > qrPeek));
+const fmtM = m => m.toLocaleString("en-US") + " m";
+// The track winds up the map from the village at the bottom to the North Pole at the top.
+const SLED_PATH = "M100 318 C30 300 26 262 92 250 S176 214 112 192 S22 156 84 134 S170 104 116 86 S70 66 92 56";
+function joinAside() {
+  if (!showSled()) {
+    if (!screenJoin()) return "";
+    const back = screenTheme() === "xmas" && sledStation() && classGoing();
+    return `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p>${back ? `<button class="ghost sled-btn" data-sledback>Back to the sled</button>` : ""}</aside>`;
+  }
+  const d = sledData(), left = d.goal - d.m, rr = state.round;
+  const legs = d.per.map((v, r) => ({ v, r })).filter(({ v, r }) => v || r <= rr);
+  const trees = [[28, 214], [168, 270], [40, 108], [172, 150], [150, 62], [18, 290], [182, 218], [60, 176]];
+  return `<aside class="scr-join scr-sled" aria-label="Christmas sled: ${fmtM(d.m)} of ${fmtM(d.goal)} to the North Pole">
+    <div class="sled-h">To the North Pole</div>
+    <svg class="sled-map" viewBox="0 0 200 340" aria-hidden="true">
+      <defs><linearGradient id="smSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b1a36"/><stop offset=".35" stop-color="#173a5e"/><stop offset="1" stop-color="#1f4a70"/></linearGradient>
+        <linearGradient id="smAur" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3ecf6e" stop-opacity="0"/><stop offset=".5" stop-color="#5ff2c0" stop-opacity=".55"/><stop offset="1" stop-color="#3ecf6e" stop-opacity="0"/></linearGradient></defs>
+      <rect width="200" height="340" rx="10" fill="url(#smSky)"/>
+      <path class="aurora" d="M0 40 C50 10 120 50 200 18 L200 34 C120 64 60 26 0 56 Z" fill="url(#smAur)"/>
+      <path d="M0 70 C40 56 80 64 110 58 S170 50 200 60 V340 H0 Z" fill="#dfeaf6"/>
+      <path d="M0 150 C50 136 120 160 200 140 V340 H0 Z" fill="#cfdeee"/>
+      <path d="M0 250 C60 236 140 262 200 244 V340 H0 Z" fill="#c2d4e8"/>
+      ${trees.map(([x, y]) => `<g transform="translate(${x} ${y})"><path d="M0 -18 L9 0 H-9 Z M0 -26 L7 -10 H-7 Z" fill="#1f6f43"/><path d="M0 -26 L3 -20 H-3 Z" fill="#fff"/><rect x="-1.5" y="0" width="3" height="4" fill="#6b4226"/></g>`).join("")}
+      <g transform="translate(100 330)"><path d="M-14 -4 V-16 L0 -26 L14 -16 V-4 Z" fill="#8b3a2e"/><path d="M-17 -15 L0 -29 L17 -15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/><rect x="-4" y="-12" width="8" height="8" fill="#f5c542"/></g>
+      <path class="sled-track" d="${SLED_PATH}"/>
+      <path class="sled-trail" d="${SLED_PATH}" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1"/>
+      <g transform="translate(124 54)"><rect x="-2.5" y="-30" width="5" height="32" fill="#fff"/>
+        <path d="M-2.5 -26 L2.5 -29 V-24 L-2.5 -21 Z M-2.5 -16 L2.5 -19 V-14 L-2.5 -11 Z M-2.5 -6 L2.5 -9 V-4 L-2.5 -1 Z" fill="#e03131"/>
+        <circle cy="-33" r="4.5" fill="#f5c542"/><rect x="7" y="-8" width="10" height="9" fill="#e03131"/><rect x="11" y="-8" width="2" height="9" fill="#f5c542"/>
+        <rect x="-18" y="-6" width="9" height="7" fill="#2f9e44"/><rect x="-14.5" y="-6" width="2" height="7" fill="#fff"/></g>
+      ${legs.slice(0, -1).map(({ r }) => `<g class="sled-flag" data-at="${Math.min(1, d.per.slice(0, r + 1).reduce((a, b) => a + b, 0) * LANE_M / d.goal)}"><path d="M0 2 V-20" stroke="#10203a" stroke-width="2"/><path d="M0 -20 L15 -15 L0 -10 Z" fill="#e03131"/><text x="-3" y="-23" font-size="12" font-weight="800">R${r + 1}</text></g>`).join("")}
+      <g class="sleigh" data-at="${Math.min(1, d.m / d.goal)}"><g class="sleigh-in">
+        <path d="M-20 9 H14 C21 9 23 4 20 0" fill="none" stroke="#f5c542" stroke-width="2.6" stroke-linecap="round"/>
+        <path d="M-14 9 V4 M8 9 V4" stroke="#f5c542" stroke-width="2"/>
+        <path d="M-19 5 C-21 -5 -18 -12 -11 -12 L-7 -3 H10 C14 -3 16 -1 16 5 Z" fill="#e03131" stroke="#7a1010" stroke-width="1"/>
+        <rect x="-5" y="-14" width="11" height="11" fill="#2f9e44"/><rect x="-0.5" y="-14" width="2" height="11" fill="#f5c542"/><rect x="-5" y="-9.5" width="11" height="2" fill="#f5c542"/>
+        <rect x="-14" y="-19" width="8" height="8" fill="#1c7ed6"/><rect x="-10.8" y="-19" width="1.6" height="8" fill="#fff"/>
+      </g></g>
+    </svg>
+    <div class="sled-m">${fmtM(d.m)}</div>
+    <div class="sled-sub">${d.lanes} lane${d.lanes === 1 ? "" : "s"} · ${left > 0 ? `${fmtM(left)} to the North Pole` : `North Pole reached!${left < 0 ? ` +${fmtM(-left)}` : ""}`}</div>
+    ${W.rounds > 1 ? `<div class="sled-legs">${legs.map(({ v, r }) => `<span>R${r + 1} <b>${v ? "+" + fmtM(v * LANE_M) : "–"}</b></span>`).join("")}</div>` : ""}
+    ${screenJoin() ? `<button class="ghost sled-btn" data-sledqr>QR to join</button>` : ""}
+  </aside>`;
+}
+// Moves the sled (and the golden trail behind it) along the track from where it was to the new distance.
+let sledAt = null, sledRaf = 0, sledLastM = null;
+function placeSled() {
+  const el = $("screen"), path = el.querySelector(".sled-track"), sl = el.querySelector(".sleigh");
+  if (!path || !sl) return;
+  const L = path.getTotalLength(), trail = el.querySelector(".sled-trail"), d = sledData();
+  const put = (g, p) => { const a = path.getPointAtLength(p * L); g.setAttribute("transform", `translate(${a.x.toFixed(1)} ${a.y.toFixed(1)})`); return a; };
+  el.querySelectorAll(".sled-flag").forEach(f => put(f, +f.dataset.at));
+  const draw = p => {
+    const a = put(sl, p), b = path.getPointAtLength(Math.min(L, p * L + 2)), c = path.getPointAtLength(Math.max(0, p * L - 2));
+    const dx = b.x - c.x, dy = b.y - c.y, flip = dx < 0;
+    const tilt = Math.max(-28, Math.min(28, Math.atan2(dy, Math.abs(dx) || .01) * 180 / Math.PI));
+    sl.firstElementChild.setAttribute("transform", `translate(0 -7) scale(${flip ? -1.3 : 1.3} 1.3) rotate(${tilt.toFixed(1)})`);
+    if (trail) trail.setAttribute("stroke-dashoffset", (1 - p).toFixed(4));
+  };
+  const to = +sl.dataset.at, from = sledAt === null ? 0 : sledAt;
+  cancelAnimationFrame(sledRaf);
+  if (from === to || matchMedia("(prefers-reduced-motion: reduce)").matches) { sledAt = to; draw(to); }
+  else {
+    const t0 = performance.now(), dur = 1600;
+    const step = ts => { const k = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - k, 3); sledAt = from + (to - from) * e; draw(sledAt); if (k < 1) sledRaf = requestAnimationFrame(step); };
+    draw(from); sledRaf = requestAnimationFrame(step);
+  }
+  if (sledLastM !== null && sledLastM > 0 && sledLastM < d.goal && d.m >= d.goal) glitter("North Pole!", true);
+  sledLastM = d.m;
+}
+$("screen").addEventListener("click", e => {
+  if (e.target.closest("[data-sledqr]")) {
+    qrPeek = Date.now() + 30000; clearTimeout(qrPeekTimer); qrPeekTimer = setTimeout(() => { qrPeek = 0; renderScreen(); }, 30200); renderScreen();
+  } else if (e.target.closest("[data-sledback]")) { qrPeek = 0; clearTimeout(qrPeekTimer); renderScreen(); }
+});
 // ?screen shows today's standings large for a TV or laptop, with the clock and a QR code to join.
 // It follows the live session like a team phone but can't change anything.
 // A thin bar under an EMOM's minutes on the big screen: done, missed, still to come.
@@ -2058,7 +2276,7 @@ const showLanes = () => W.slot && state.teams.length && !clockStart(state.round)
 function swimlaneHtml() {
   const N = W.stations.length;
   const head = [...Array(N)].map((_, k) => `<div class="lane-h">${fmt(k * W.slot)}</div>`).join("");
-  const rows = state.teams.map((t, i) => `<div class="lane-t" style="${tc(i)}"><span class="tname"><span class="dot"></span>${esc(t.name)}</span>${neonNick(i)}</div>` +
+  const rows = state.teams.map((t, i) => `<div class="lane-t" style="${tc(i)}"><span class="tname"><span class="dot"></span>${esc(t.name)}</span>${themeNick(i)}</div>` +
     [...Array(N)].map((_, k) => { const s = W.stations[(startOf(i) + k) % N];
       return `<div class="lane-c" style="${tc(i)}">${esc(s.name)}${s.work ? `<small>${Math.ceil((s.time || W.slot) / (s.work + s.switch))} × ${fmt(s.work)}</small>` : ""}</div>`; }).join("")).join("");
   return `<div class="rot-head">Where you go · ${N} stations, ${fmt(W.slot)} each</div>
@@ -2208,22 +2426,22 @@ function renderScreen() {
     ${W.stations.filter(hasNowNext).map(s => `<div class="nownext big" data-nn="${s.id}">${nowNextHtml(s)}</div>`).join("")}
     ${beatScreenHtml()}
     ${showLanes() ? `<div class="scr-main"><div class="rot-board">${swimlaneHtml()}</div>
-      ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : ""}
+      ${joinAside()}</div>` : ""}
     ${showLanes() ? "" : W.slot && W.ranked ? `<div class="rot-head" data-rothead>${esc(rotHead())}</div><div class="rot-strip" data-rotstrip>${rotStripHtml()}</div>` : ""}
     ${showLanes() ? "" : W.slot && !W.ranked ? `<div class="scr-main"><div class="rot-board" data-rotboard>${rotBoardHtml()}</div>
-      ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}</div>` : `
+      ${joinAside()}</div>` : `
     <div class="scr-main">
       <div class="tbl-wrap"><table class="scr-tbl">
         <thead><tr><th></th><th>Team</th>${W.stations.map(s => `<th>${esc(s.name)}<br>${esc(unitHead(s, ba))}</th>`).join("")}${n > 1 ? "<th>Points</th>" : ""}</tr></thead>
         <tbody>${rows.map(({ t, i, pts, place }) => `
           <tr class="${any && place === 1 ? "lead" : ""}"><td class="place">${any ? place : ""}</td>
-            <td style="${tc(i)}"><span class="tname"><span class="dot"></span>${esc(t.name)}</span>${neonNick(i)}${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
+            <td style="${tc(i)}"><span class="tname"><span class="dot"></span>${esc(t.name)}</span>${themeNick(i)}${pa ? `<span class="avg">${athletes(t)} athletes</span>` : ""}</td>
             ${W.stations.map(s => `<td>${cellHtml(s, t, ba, pa, true)}${rk[s.id] && !one ? (rk[s.id][i] ? `<span class="rk">#${rk[s.id][i]}</span>` : "") : ranked(s) ? "" : gridBar(s, t)}</td>`).join("")}
             ${n > 1 ? `<td class="pts">${any ? pts : "–"}</td>` : ""}</tr>`).join("")}</tbody>
       </table></div>
-      ${screenJoin() ? `<aside class="scr-join"><div class="qr" id="scrQr"></div><p class="scr-sub">Scan to join</p></aside>` : ""}
+      ${joinAside()}
     </div>`}`;
-  if (screenJoin()) drawQR($("scrQr"), screenJoin());
+  if (showSled()) placeSled(); else if (screenJoin()) drawQR($("scrQr"), screenJoin());
   renderScrCtl();
 }
 // A count station's cell: per athlete big with the total small, or the total big with "x each" small.
