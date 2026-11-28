@@ -3003,7 +3003,26 @@ function renderLinks() {
     <div class="actions"><button class="ghost" id="trainerShare" data-label="Send trainer link">Send trainer link</button></div>
     <h3 class="sub">This phone</h3>
     <div class="actions"><button class="ghost" id="startExtra">Start extra session</button>
-      <button class="ghost" data-role="">Switch role</button></div>`;
+      <button class="ghost" data-role="">Switch role</button>
+      <button class="ghost" id="teamHere">Count for a team</button></div>
+    ${teamHere ? teamHereHtml() : ""}`;
+}
+// A trainer's own phone or tablet can count for a team, like a phone that scanned that team's QR code: it takes
+// this session's join code and the team, and reloads as a team phone. Back to the trainer view: Switch team,
+// then Trainer? (the PIN is remembered on this phone).
+let teamHere = false;
+function teamHereHtml() {
+  if (!trainerKey || eventId !== latest) return `<p class="note">Open the session that is live now, then try again.</p>`;
+  return `<p class="note">Pick the team this phone counts for. It joins the live session like a phone that scanned the team's QR code. To come back here, tap Switch team, then Trainer? and Yes.</p>
+    <div class="actions">${state.teams.map((t, i) => `<button class="ghost" style="${tc(i)}" data-teamhere="${esc(t.id)}">${esc(t.name)}</button>`).join("")}
+      <button class="ghost" id="teamHereNo">Cancel</button></div>`;
+}
+function useForTeam(team) {
+  if (!trainerKey || !state.teams.some(t => t.id === team)) return;
+  // Same as scanning the team's QR code: the code and the team are kept, and the page starts as a team phone.
+  try { localStorage.setItem(JOIN_KEY, trainerKey); } catch {}
+  setRole(team);
+  location.replace(joinUrl(trainerKey, team));
 }
 
 // Trainer only: today's sessions (switch every phone), past sessions (open on this phone), and adding a past one.
@@ -3080,6 +3099,10 @@ document.addEventListener("click", e => {
   else if (b.dataset.edit) { editing = b.dataset.edit; renderBoard(); return; }
   else if (b.dataset.remove) { removeTeam(+b.dataset.remove); renderSetup(); }
   else if (b.dataset.role !== undefined) {
+    // The trainer's Switch role keeps today's join code, so this phone can then pick a team and count for it.
+    if (getRole() === "trainer" && b.dataset.role !== "trainer" && trainerKey && eventId === latest) {
+      joinCode = trainerKey; try { localStorage.setItem(JOIN_KEY, trainerKey); } catch {}
+    }
     setRole(b.dataset.role); editing = null; trainerAsk = false;
     // A phone without a join code isn't connected: becoming the trainer starts afresh.
     if (!live && view === "scan") { location.reload(); return; }
@@ -3108,6 +3131,8 @@ document.addEventListener("click", e => {
   else if (b.id === "switchTeam") { setRole(""); editing = null; view = "pick"; window.scrollTo(0, 0); joinEvent(); }
   else if (b.id === "switchNo") { renderSections(); return; }
   else if (b.id === "trainerShare") return share(baseUrl() + "?trainer", b);
+  else if (b.id === "teamHere" || b.id === "teamHereNo") { teamHere = b.id === "teamHere"; return renderLinks(); }
+  else if (b.dataset.teamhere !== undefined) return useForTeam(b.dataset.teamhere);
   else if (b.id === "trainerAsk" || b.id === "trainerNo") { trainerAsk = b.id === "trainerAsk"; }
   else if (b.dataset.switch) return switchSession(b.dataset.switch);
   else if (b.dataset.open) { location.href = baseUrl() + "?e=" + b.dataset.open; return; }
