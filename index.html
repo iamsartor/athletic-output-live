@@ -676,6 +676,9 @@ body.screen.theme-xmas .qr { box-shadow: 0 0 18px rgb(245 197 66 / .45); }
 //            measure "done" (a grid of minutes: they tick themselves off as the clock passes them, a team
 //            only taps a missed one) or "reps" (count reps each minute). An EMOM is a team's own progress
 //            grid and isn't ranked, unless the station has scored: true
+//     tabata work and rest in seconds (20 and 10 by default; 40 and 20 is a common variation), intervals (max 60,
+//            8 by default), moves (rotate each interval). Teams count reps in each interval; ranked on the
+//            total over all intervals, or on the lowest interval with score: "lowest". scored: false leaves it unranked
 // Rotation (race simulations): slot on the workout ("3:30") makes everyone move one station along the list
 // at the same time, every slot. Each team (an athlete or a pair) starts at a different station, spread out
 // by itself, and does the whole list. time on a station ("3:00") is its work time; the rest of the slot is
@@ -720,7 +723,7 @@ const KEY = "team-output-live-v2"; // own key: both apps share the iamsartor.git
 // a phone's first visit starts from it, so team ids and names carry over.
 const OLD_KEY = "team-output-live-v1";
 const COLORS = 6;
-const TYPES = { count: "max", time: "for time", amrap: "rounds + reps", emom: "EMOM" };
+const TYPES = { count: "max", time: "for time", amrap: "rounds + reps", emom: "EMOM", tabata: "Tabata" };
 
 // Checks a workout (from this file or a saved session) and fills in defaults. Returns null if it's unusable.
 function normWorkout(w) {
@@ -747,6 +750,17 @@ function normWorkout(w) {
       o.minutes = int(s.minutes, 1, 60, 10);
       o.measure = s.measure === "done" ? "done" : "reps";
       o.scored = s.scored === true || s.scored === "true";
+      o.moves = (Array.isArray(s.moves) && s.moves.length ? s.moves : [o.name]).slice(0, 12).map(m => txt(m, 40));
+    }
+    // Tabata: work and rest each interval on the shared clock, reps counted per interval (stored like EMOM minutes).
+    if (o.type === "tabata") {
+      delete o.switch;
+      o.work = int(s.work === undefined ? 20 : sec(s.work), 5, 600, 20);
+      o.rest = int(s.rest === undefined ? 10 : sec(s.rest), 0, 600, 10);
+      o.intervals = int(s.intervals, 1, 60, 8);
+      o.measure = "reps";
+      o.scored = s.scored !== false && s.scored !== "false";
+      o.score = s.score === "lowest" ? "lowest" : "total";
       o.moves = (Array.isArray(s.moves) && s.moves.length ? s.moves : [o.name]).slice(0, 12).map(m => txt(m, 40));
     }
     return o;
@@ -912,6 +926,11 @@ const baseUrl = () => location.origin + location.pathname;
 // "chip_t" (seconds), "chip_c" (1 = time cap) and "chip_r" (reps at the cap) for time,
 // "amrap_n" (rounds) and "amrap_r" (reps) for AMRAP, "emom_m1".."emom_m60" for each EMOM minute.
 const stationOf = key => W.stations.find(s => s.id === key.split("_")[0]);
+// Interval grids: an EMOM has a minute per cell, a Tabata work + rest. Both keep their cells as "<id>_m1", "<id>_m2" ...
+const grid = s => s.type === "emom" || s.type === "tabata";
+const ivLen = s => s.type === "tabata" ? s.work + s.rest : 60;
+const ivCount = s => s.type === "tabata" ? s.intervals : s.minutes;
+const gridEnd = s => ivLen(s) * ivCount(s);
 
 // A station's result for one team over all rounds: a sort key (lower is better) and the text to show.
 function score(s, t, w = W) {
@@ -920,6 +939,12 @@ function score(s, t, w = W) {
   if (s.type === "amrap") {
     const n = sum(s.id + "_n"), m = sum(s.id + "_r");
     return { key: s.repsPerRound ? [-(n * s.repsPerRound + m)] : [-n, -m], text: `${n} + ${m}` };
+  }
+  if (s.type === "tabata") {
+    let n = 0, low = Infinity;
+    for (const r of R) for (let m = 1; m <= s.intervals; m++) { const x = val(t, r, `${s.id}_m${m}`); n += x; low = Math.min(low, x); }
+    if (s.score === "lowest") return { key: [-low, -n], text: n ? `${low} low · ${n}` : "0" };
+    return { key: [-n], text: String(n) };
   }
   if (s.type === "emom") {
     let n = 0;
@@ -952,7 +977,7 @@ function splitOf(s, t) {
   return "";
 }
 // Stations that count for the ranking. An EMOM is a progress grid for each team unless it's marked scored.
-const ranked = (s, w = W) => (s.type !== "emom" || s.scored) && !(w.slot && !w.ranked);
+const ranked = (s, w = W) => (!grid(s) || s.scored) && !(w.slot && !w.ranked);
 const cmp = (a, b) => { for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0) ? -1 : 1; return 0; };
 const anyScores = () => state.teams.some(t => t.counts.some(c => Object.values(c).some(x => x)));
 
@@ -972,7 +997,7 @@ const CD_KEY = "team-output-countdown", CD_OPTS = [0, 10, 20, 30];
 const countdownSecs = () => { try { const v = localStorage.getItem(CD_KEY); return v !== null && CD_OPTS.includes(+v) ? +v : 20; } catch { return 20; } };
 const paused = r => clockStart(r) < 0;
 const timed = () => !!W.slot || W.timer !== undefined || W.stations.some(s => s.type !== "count");
-const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(W.timer || 0, ...W.stations.map(s => s.type === "emom" ? s.minutes * 60 : s.cap || 0));
+const clockEnd = () => W.slot ? W.slot * W.stations.length : Math.max(W.timer || 0, ...W.stations.map(s => grid(s) ? gridEnd(s) : s.cap || 0));
 // A countdown timer ("timer": "5:00") is restarted by the trainer for each block.
 const timerDone = () => !!W.timer && clockStart(state.round) > 0 && elapsed(state.round) >= clockEnd();
 const elapsed = r => { const v = clockStart(r); return v < 0 ? -v / 1000 : v ? Math.max(0, (now() - v) / 1000) : 0; };
@@ -985,7 +1010,8 @@ function clockText() {
   if ((W.timer || W.stations.every(s => s.type === "amrap")) && end) return `${fmt(end - el)} left${p}`;
   return fmt(el) + (end ? ` / ${fmt(end)}` : "") + p;
 }
-const minuteNow = s => clockStart(state.round) ? Math.min(s.minutes, Math.floor(elapsed(state.round) / 60) + 1) : 0;
+// The EMOM minute (or Tabata interval) the clock is in, from 1. 0 before the start.
+const minuteNow = s => clockStart(state.round) ? Math.min(ivCount(s), Math.floor(elapsed(state.round) / ivLen(s)) + 1) : 0;
 const canRunClock = () => view === "local" || (trainerOn() && eventId && eventId.startsWith(today()));
 function startClock(skipCountdown = false) {
   const r = state.round, cd = skipCountdown ? 0 : countdownSecs();
@@ -1008,8 +1034,8 @@ const resumeClock = () => writeClock(state.round, now() + clockStart(state.round
 // EMOM ticks and misses for minutes the clock hasn't reached yet are cleared.
 function setClock(secs) {
   const r = state.round, ms = Math.max(1, secs * 1000);
-  const upto = Math.floor(secs / 60), clear = {};
-  for (const s of W.stations) if (s.type === "emom") for (const t of state.teams) for (let m = upto + 1; m <= s.minutes; m++) {
+  const clear = {};
+  for (const s of W.stations) if (grid(s)) for (const t of state.teams) for (let m = Math.floor(secs / ivLen(s)) + 1, upto = m - 1; m <= ivCount(s); m++) {
     const key = `${s.id}_m${m}`, x = val(t, r, key);
     // The minute in progress keeps a miss a team already tapped; only a tick can't be right yet.
     if (x && (m > upto + 1 || x === 1)) { clear[`counts/${t.id}/r${r}/${key}`] = null; delete t.counts[r][key]; dropPending(`${t.id}/r${r}/${key}`); }
@@ -1602,6 +1628,21 @@ const STATION = {
       <div class="mins">${cells}</div>${panel}
       <div class="st-other">${W.rounds > 1 ? "Total over all rounds" : "Total"}: ${esc(score(s, t).text)}</div></div>`;
   },
+  // Tabata: one cell per interval with its reps. The selected interval follows the clock and stays on the
+  // interval just worked through its rest, so a team can still add its reps while resting.
+  tabata: (s, t, r) => {
+    const now = minuteNow(s), sel = emomSel[s.id] || now || 1, move = m => s.moves[(m - 1) % s.moves.length];
+    const cells = [...Array(s.intervals)].map((_, k) => {
+      const m = k + 1, x = val(t, r, `${s.id}_m${m}`);
+      return `<button class="${m === now ? "now" : ""} ${m === sel ? "sel" : ""}" data-min="${s.id}:${m}" aria-label="Interval ${m}, ${esc(move(m))}: ${x} reps"><b>${m}</b><span>${esc(move(m))}</span><i>${x}</i></button>`;
+    }).join("");
+    const key = `${s.id}_m${sel}`;
+    return `<div class="st wide">${top(s.name, `${s.intervals} × ${fmt(s.work)} on / ${fmt(s.rest)} off · reps${s.scored ? s.score === "lowest" ? " · lowest interval counts" : "" : " · not ranked"}`)}${info(s)}
+      ${todaysSession() ? nowNextBox(s) : ""}
+      <div class="mins">${cells}</div>
+      <div class="min-panel">${top(`Interval ${sel} · ${move(sel)}`, "reps")}${bigVal(key, val(t, r, key), `Interval ${sel} reps`)}${stepBtns(key, s.steps)}</div>
+      <div class="st-other">${W.rounds > 1 ? "Total over all rounds" : "Total"}: ${esc(score(s, t).text)}</div></div>`;
+  },
 };
 
 function commitClock() {
@@ -1640,7 +1681,7 @@ function rotAt(i) {
   if (el >= W.slot * N) return { k: N, p, s, phase: "done", left: 0, next: "" };
   if (t >= work) return { k, p, s, phase: "move", left: W.slot - t, next };
   // Intervals inside the station: part n of parts, working or switching.
-  if (s.work) {
+  if (s.work && s.type !== "tabata") {
     const cyc = s.work + s.switch, n = Math.floor(t / cyc), parts = Math.ceil(work / cyc), u = t - n * cyc;
     // The switch after the last part is the move to the next station (when the station has no "time").
     if (u >= s.work && n + 1 >= parts) return { k, p, s, phase: "move", left: W.slot - t, next };
@@ -1749,6 +1790,15 @@ function nowNext(s) {
       next,
     };
   }
+  if (s.type === "tabata") {
+    const part = W.stations[W.stations.indexOf(s) + 1], move = k => s.moves[(k - 1) % s.moves.length];
+    if (started && el >= gridEnd(s)) return { now: `${s.name} done`, left: "", next: part ? part.name : "" };
+    const m = started ? Math.floor(el / ivLen(s)) + 1 : 1, u = started ? el - (m - 1) * ivLen(s) : 0, rest = started && u >= s.work;
+    const wait = !started ? "waiting for the clock" : paused(r) ? "paused" : "";
+    const after = m < s.intervals ? `Interval ${m + 1} · ${move(m + 1)}` : part ? part.name : "done";
+    if (rest) return { now: `Rest · ${m} of ${s.intervals} done`, left: wait || `${fmt(Math.ceil(ivLen(s) - u))} left`, next: after, rest: true };
+    return { now: `Work · interval ${m} of ${s.intervals} · ${move(m)}`, left: wait || `${fmt(Math.ceil(s.work - u))} left`, next: s.rest ? "Rest" : after };
+  }
   const m = started ? Math.min(s.minutes, Math.floor(el / 60) + 1) : 1, move = k => s.moves[(k - 1) % s.moves.length];
   if (started && el >= s.minutes * 60) {
     const part = W.stations[W.stations.indexOf(s) + 1];
@@ -1764,7 +1814,7 @@ function nowNext(s) {
 const nowNextHtml = s => { const n = nowNext(s); return `<div class="nn-row"><span class="nn-l">Now</span><b>${esc(n.now)}</b>${n.left ? `<span class="nn-t">${esc(n.left)}</span>` : ""}</div>${n.next ? `<div class="nn-row next"><span class="nn-l">Next</span><span>${esc(n.next)}</span></div>` : ""}`; };
 const nowNextBox = s => `<div class="nownext" data-nn="${s.id}">${nowNextHtml(s)}</div>`;
 // EMOMs always get Now / Next; time and AMRAP parts only when the workout has more than one part.
-const hasNowNext = s => s.type === "emom" || ((s.type === "time" || s.type === "amrap") && W.stations.length > 1 && !W.slot);
+const hasNowNext = s => grid(s) || ((s.type === "time" || s.type === "amrap") && W.stations.length > 1 && !W.slot);
 const todaysSession = () => !(live && eventId && !eventId.startsWith(today()));
 
 const cdPick = () => `<select class="cd-pick" id="cdPick" aria-label="Countdown before the start">${CD_OPTS.map(n => `<option value="${n}"${countdownSecs() === n ? " selected" : ""}>${n ? `${n} s countdown` : "No countdown"}</option>`).join("")}</select>`;
@@ -1857,7 +1907,7 @@ setInterval(() => {
   document.querySelectorAll("[data-nn]").forEach(el => { const s = W.stations.find(s => s.id === el.dataset.nn); if (s) { const h = nowNextHtml(s); if (el.innerHTML !== h) el.innerHTML = h; } });
   fillPassed();
   let moved = false;
-  for (const s of W.stations) if (s.type === "emom") {
+  for (const s of W.stations) if (grid(s)) {
     const m = minuteNow(s);
     if (m && m !== lastMinute[s.id]) { lastMinute[s.id] = m; emomSel[s.id] = m; moved = true; }
   }
@@ -1870,6 +1920,7 @@ const HOW = {
   time: s => `fastest time wins; ${s.totalReps ? "a capped team scores the cap plus one second per missing rep" : "capped teams rank behind all finishers, by reps"}`,
   amrap: () => "most rounds plus reps wins",
   emom: s => s.measure === "done" ? "most minutes done wins" : "most reps over all minutes wins",
+  tabata: s => s.score === "lowest" ? "the best lowest interval wins (then most reps in total)" : "most reps over all intervals wins",
 };
 // Ranks every team on each station, then adds the ranks up to points (lowest wins). Tied teams share a rank.
 // A station nobody has a result on yet gives no ranks (instead of #1 for everyone) and no points.
@@ -1889,7 +1940,7 @@ function table(w, teams, sc = score) {
   return { rk, rows, n: rs.length };
 }
 const ordinal = n => n + (n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th");
-const unitOf = s => s.type === "count" ? s.unit : s.type === "emom" ? (s.measure === "done" ? "minutes" : "reps") : TYPES[s.type];
+const unitOf = s => s.type === "count" ? s.unit : s.type === "tabata" ? "reps" : s.type === "emom" ? (s.measure === "done" ? "minutes" : "reps") : TYPES[s.type];
 
 // ---- History and personal bests ----
 // Every phone in a live session reads all sessions once. A best compares the same workout (same id and
@@ -1981,7 +2032,7 @@ function beatOf(json) {
   try { const b = JSON.parse(json || "{}").beat; return typeof b === "string" && BEAT_RE.test(b) ? b : null; } catch { return null; }
 }
 // Stations whose results add up over teams to one number: max stations, EMOM reps, AMRAPs counted in reps.
-const groupable = s => s.type === "count" || (s.type === "emom" && s.measure === "reps") || (s.type === "amrap" && !!s.repsPerRound);
+const groupable = s => s.type === "count" || (s.type === "emom" && s.measure === "reps") || (s.type === "tabata" && s.score !== "lowest") || (s.type === "amrap" && !!s.repsPerRound);
 const groupSum = (s, teams, w) => teams.reduce((a, t) => a + -score(s, t, w).key[0], 0);
 const groupUnit = s => s.type === "count" ? s.unit : "reps";
 // The same station in the earlier session: same id, or failing that the same name, and the same kind.
@@ -2291,12 +2342,14 @@ function screenPhase() {
     return !ph.length ? null : ph.every(p => p === "move" || p === "switch") ? "rest" : "work";
   }
   if (W.timer) return timerDone() ? "rest" : "work";
+  const s = curPart();
+  if (s && s.type === "tabata" && elapsed(r) < gridEnd(s)) return (elapsed(r) % ivLen(s)) >= s.work ? "rest" : "work";
   return null;
 }
 // Work starting turns the screen a strong colour for 18 seconds, then it fades back to normal.
 // Measured on the shared clock, so Set time or a late screen behave the same as everyone else.
 let lastPhase = null, goArmed = false;
-const GO_SECS = 18;
+const GO_SECS = 18, TABATA_GO = 3;
 function phaseCue() {
   if (!screenMode) return;
   const ph = screenPhase();
@@ -2312,6 +2365,9 @@ function phaseCue() {
 function elapsedInWork() {
   const el = elapsed(state.round);
   if (W.slot) { const a = state.teams.length ? rotAt(0) : null; if (!a) return 0; const t = el - a.k * W.slot; return a.part ? t - (a.part - 1) * (a.s.work + a.s.switch) : t; }
+  // Tabata work is short, so its GO flash is only the first few seconds of each interval.
+  const s = curPart();
+  if (s && s.type === "tabata") return (el % ivLen(s)) * GO_SECS / TABATA_GO;
   return el;
 }
 const phaseTag = () => { const ph = screenPhase(); return ph === "rest" ? "Rest" : ph === "work" && goArmed && elapsedInWork() < GO_SECS ? "Go!" : ""; };
@@ -2352,7 +2408,7 @@ if (bigOn && !screenMode && getRole() !== "trainer" && !bigInHistory()) { histor
 // The part of a multi-part workout that's running now: the first one the shared clock hasn't finished.
 function curPart() {
   const parts = W.stations.filter(hasNowNext), el = elapsed(state.round);
-  return parts.find(s => !clockStart(state.round) || el < (s.type === "emom" ? s.minutes * 60 : s.cap || Infinity)) || parts[parts.length - 1];
+  return parts.find(s => !clockStart(state.round) || el < (grid(s) ? gridEnd(s) : s.cap || Infinity)) || parts[parts.length - 1];
 }
 function bigInfo() {
   const r = state.round, pz = paused(r);
@@ -2370,7 +2426,7 @@ function bigInfo() {
   if (s) {
     // A part counting down (an EMOM minute, a capped part) shows its own time left big, the workout clock small.
     const n = nowNext(s), m = /^(\d+:\d\d) left$/.exec(n.left), next = n.next === "done" ? "Finish" : n.next;
-    if (m) return { clock: m[1], cl: "Left", l: "Now", now: n.now, sub: clock ? `Clock ${clock}` : "", next };
+    if (m) return { clock: m[1], cl: n.rest ? "Rest" : "Left", l: "Now", now: n.now, sub: clock ? `Clock ${clock}` : "", next, rest: !!n.rest };
     return { clock, cl, l: "Now", now: n.now, sub: clockStart(r) && !pz ? n.left : "", next, rest: timerDone() };
   }
   return { clock, cl, l: W.stations.length === 1 ? "Now" : "", now: W.stations.length === 1 ? W.stations[0].name : W.name, next: "", rest: timerDone() };
@@ -2607,6 +2663,7 @@ function renderSetup() {
 const describe = s => s.type === "count" ? `max ${s.unit}`
   : s.type === "time" ? (s.target ? `${s.target} ${s.unit} for time` : "for time") + (s.cap ? `, cap ${fmt(s.cap)}` : "")
   : s.type === "amrap" ? "rounds + reps" + (s.cap ? `, ${fmt(s.cap)}` : "")
+  : s.type === "tabata" ? `Tabata ${s.intervals} × ${fmt(s.work)} work / ${fmt(s.rest)} rest, reps${s.scored ? s.score === "lowest" ? ", lowest interval counts" : ", total counts" : ", progress only (not ranked)"}`
   : `EMOM ${s.minutes} min, ${s.measure === "done" ? "done or missed" : "reps"}${s.scored ? ", ranked" : ", progress only (not ranked)"}`;
 const summary = w => (w.slot ? `Rotation, move on every ${fmt(w.slot)}: ` : w.rounds > 1 ? `${w.rounds} rounds: ` : "") + w.stations.map(s => `${s.name} (${describe(s)})`).join(", ");
 let wConfirm = null, pasteText = "", pasteCheck = null, wMsg = "", startPick = DEFAULT.id;
@@ -2640,7 +2697,7 @@ STATIONS
 A station is one part that is scored separately. Leave out warm-ups, rest and anything not scored. Every station has:
 - "id": 1-8 lowercase letters or digits only, unique in the workout, e.g. "erg", "wb", "partb"
 - "name": short, max 30 characters
-- "type": one of the four types below
+- "type": one of the five types below
 - "info": one line with what to do, max 120 characters, e.g. "4 rounds: 400 m run · 20 lunges · 15 KB swings"
 - "steps": three whole numbers for the + buttons: [1, 5, 10] for reps or cals, [10, 50, 100] for meters, [1, 2, 5] for small counts like lanes
 Use the workout's language for name, info and moves.
@@ -2658,11 +2715,12 @@ TYPES
   If the team works towards one shared goal ("120 team reps = done", "2000 m team goal"), add "target" (the number, e.g. 120 or 2000) and "unit" ("reps", "meters", "cals"). Teams then count towards it and the time is taken when they reach it. Pick steps that fit, e.g. [10, 50, 250] for 250 m pieces. With totalReps a capped team scores the cap plus 1 second per missing rep.
 - "amrap": as many rounds and reps as possible. Add "cap" as "mm:ss" (the AMRAP length) and "repsPerRound" if one round has a fixed number of reps.
 - "emom": every minute on the minute. Add "minutes" = the total number of minutes (e.g. 4 moves for 4 rounds = 16), "moves" = the list of what happens in minute 1, 2, 3 ... (it repeats; include "Rest" if a minute is rest), and "measure": "done" (usual: a grid where minutes tick themselves off on the shared clock and a team only taps the ones it missed) or "reps" (only if the card asks for max reps each minute). An EMOM is each team's own progress and isn't ranked. Add "scored": true only if the card says the EMOM result counts towards the winner.
+- "tabata": intervals of work and rest on the shared clock, e.g. "Tabata", "20/10 x 8", "40 on 20 off". Add "work" (e.g. "0:20" or "0:40"), "rest" (e.g. "0:10" or "0:20"), "intervals" = how many work intervals in total (classic Tabata: 8; 2 exercises x 8 = 16) and "moves" = what happens in interval 1, 2, 3 ... (it repeats). Teams count reps in each interval; the total counts for the ranking. Add "score": "lowest" only if the card scores the weakest interval (classic Tabata scoring), and "scored": false only if the card says it isn't scored. Several Tabata blocks with a longer break between them ("4 Tabatas, 1 min rest between") are one station each, or one station if the break doesn't matter.
 
 TIMER
-TIMES: every time in the workout (cap, timer, slot, time, work, switch) is written "m:ss" as a string in quotes: "0:30" is 30 seconds, "1:30" is 90 seconds, "6:00" is 6 minutes, "18:00" is 18 minutes. Never a plain number like 30 or 90, and never "30s" or "5 min".
+TIMES: every time in the workout (cap, timer, slot, time, work, switch, rest) is written "m:ss" as a string in quotes: "0:30" is 30 seconds, "1:30" is 90 seconds, "6:00" is 6 minutes, "18:00" is 18 minutes. Never a plain number like 30 or 90, and never "30s" or "5 min".
 
-The shared clock shows on its own for time, amrap and emom stations. If every station is "count" but the stations run for a set time (for example 5 minutes at each station before the teams switch), add "timer": "5:00" to the workout: a countdown the trainer starts for each block, and every phone shows Time! when it runs out. Use "timer": true for a clock that just counts up.
+The shared clock shows on its own for time, amrap, emom and tabata stations. If every station is "count" but the stations run for a set time (for example 5 minutes at each station before the teams switch), add "timer": "5:00" to the workout: a countdown the trainer starts for each block, and every phone shows Time! when it runs out. Use "timer": true for a clock that just counts up.
 
 ROTATION (race simulations)
 If athletes go through the stations in race order and everyone moves on at the same time (for example half on the treadmills and half on stations, switching every 3:30), add "slot": "3:30" to the workout: the time between switches. Give each station whose work is shorter a "time", e.g. "3:00"; the rest of the slot is for moving on. List the stations in race order, including each run. Each athlete or pair is one entry ("teams" = how many, up to 20, "teamSize" 1 or 2); the app spreads their starting stations by itself. Use "count" stations. Rotation workouts aren't ranked; add "ranked": true only if the card wants a winner.
@@ -2680,9 +2738,13 @@ EXAMPLE 2 ("Part A: EMOM 12, 3 moves. Part B: 4 rounds for time, 18 min cap")
  {"id":"partb","name":"Part B · for time","type":"time","cap":"18:00","totalReps":180,"steps":[1,5,10],"info":"4 rounds: 20 lunges · 15 KB swings · 10 burpees"}]}
 (Part A is a progress grid and isn't ranked, so Part B decides the winner. Part B: the 4 rounds belong to the station, so "rounds" stays 1, and totalReps = 4 x (20 + 15 + 10) = 180. When parts can't be added up, for example runs in meters, leave totalReps out.)
 
+EXAMPLE 3 ("Tabata 40/20: Burpees and KB Swings alternating, 8 rounds each")
+{"id":"tabata-40-20","name":"Tabata 40/20","teams":4,"teamSize":3,"rounds":1,"stations":[
+ {"id":"tabata","name":"Tabata 40/20","type":"tabata","work":"0:40","rest":"0:20","intervals":16,"moves":["Burpees","KB Swings"],"steps":[1,5,10],"info":"40 s work · 20 s rest · alternate moves"}]}
+
 BEFORE YOU ANSWER, CHECK
 - Every station id is 1-8 lowercase letters or digits (no dashes, underscores or spaces).
-- Every time (cap, timer, slot, time, work, switch) is a string "m:ss", e.g. "0:30" or "18:00", never a plain number.
+- Every time (cap, timer, slot, time, work, switch, rest) is a string "m:ss", e.g. "0:30" or "18:00", never a plain number.
 - "rounds" is 1 unless the whole workout is repeated and scored per round.
 - The JSON parses: no comments, no trailing commas.
 
@@ -2740,7 +2802,14 @@ function checkWorkout(text) {
       for (let k = 2; seen.has(sid); k++) sid = sid.slice(0, 7) + k;
       s.id = sid; seen.add(sid);
       if (typeof s.type === "string") s.type = s.type.toLowerCase();
-      if (!TYPES[s.type || "count"]) errors.push(`${n}: the type must be count, time, amrap or emom.`);
+      if (!TYPES[s.type || "count"]) errors.push(`${n}: the type must be count, time, amrap, emom or tabata.`);
+      if (s.type === "tabata") {
+        const wk = s.work === undefined ? 20 : mss(s.work, `${n}: work`, "0:20"), rs = s.rest === undefined ? 10 : mss(s.rest, `${n}: rest`, "0:10");
+        if (wk !== null && !(wk >= 5 && wk <= 600)) errors.push(`${n}: work must be from "0:05" to "10:00".`);
+        if (rs !== null && !(rs >= 0 && rs <= 600)) errors.push(`${n}: rest must be from "0:00" to "10:00".`);
+        if (s.intervals !== undefined && !(Number.isInteger(+s.intervals) && s.intervals >= 1 && s.intervals <= 60)) errors.push(`${n}: intervals must be a whole number from 1 to 60.`);
+        if (s.score !== undefined && s.score !== "total" && s.score !== "lowest") errors.push(`${n}: score must be "total" or "lowest".`);
+      }
       if (s.type === "emom" && !(Number.isInteger(+s.minutes) && s.minutes >= 1 && s.minutes <= 60)) errors.push(`${n}: minutes must be a whole number from 1 to 60.`);
       if ((s.type === "time" || s.type === "amrap") && s.cap !== undefined) {
         mss(s.cap, `${n}: cap`, "20:00");
@@ -2752,7 +2821,7 @@ function checkWorkout(text) {
           if (c !== null && c < 10) errors.push(`${n}: time must be at least "0:10".`);
           else if (c !== null && slot && c > slot) errors.push(`${n}: its time (${fmt(c)}) is longer than the slot (${fmt(slot)}).`); }
       }
-      if (s.work !== undefined || s.switch !== undefined) {
+      if (s.type !== "tabata" && (s.work !== undefined || s.switch !== undefined)) {
         if (o.slot === undefined) warnings.push(`${n} has "work" but the workout has no "slot", so it's ignored.`);
         else {
           const c = mss(s.work, `${n}: work`, "1:30"), sw = s.switch === undefined ? 0 : mss(s.switch, `${n}: switch`, "0:30");
@@ -2842,7 +2911,7 @@ function renderWorkout(force) {
       ${pc && pc.w ? `<button class="solid" id="wSave">${saved[pc.w.id] ? "Replace" : "Save"} ${esc(pc.w.name)}</button>` : ""}</div>
     ${pc ? pc.errors.length ? pc.errors.map(e => `<p class="err">${esc(e)}</p>`).join("")
       : `<p class="note"><b>${esc(pc.w.name)}</b>, ${pc.w.teams} teams of ${pc.w.teamSize}${pc.w.rounds > 1 ? `, ${pc.w.rounds} rounds (every station repeats)` : ""}${pc.w.slot ? `, everyone moves on every ${fmt(pc.w.slot)}${pc.w.ranked ? "" : ", not ranked"}` : ""}${pc.w.timer !== undefined ? (pc.w.timer ? `, ${fmt(pc.w.timer)} countdown timer` : ", clock counts up") : ""}. Check the stations before you save:</p>
-        <ul class="note">${pc.w.stations.map(s => `<li><b>${esc(s.name)}</b>: ${esc(describe(s))}${s.time ? `, ${fmt(s.time)} work` : ""}${s.type === "count" ? ", + buttons " + s.steps.join("/") : ""}${s.type === "emom" ? ": " + esc(s.moves.join(", ")) : ""}${s.info ? ` · ${esc(s.info)}` : ""}</li>`).join("")}</ul>
+        <ul class="note">${pc.w.stations.map(s => `<li><b>${esc(s.name)}</b>: ${esc(describe(s))}${s.time ? `, ${fmt(s.time)} work` : ""}${s.type === "count" ? ", + buttons " + s.steps.join("/") : ""}${grid(s) ? ": " + esc(s.moves.join(", ")) : ""}${s.info ? ` · ${esc(s.info)}` : ""}</li>`).join("")}</ul>
         ${pc.warnings.map(x => `<p class="err">Please check: ${esc(x)}</p>`).join("")}
         ${pc.fixed.length ? `<p class="note">Fixed automatically: ${esc(pc.fixed.join("; "))}.</p>` : ""}` : ""}
     ${wMsg ? `<p class="note">${esc(wMsg)}</p>` : ""}`;
@@ -2933,7 +3002,8 @@ const GUIDE = [
     "**For time**: tap **Finished** when your team is done; the time comes from the shared clock. Not done at the time cap? Tap **Time cap** and count the reps you did.",
     "**Team goal** (\"120 team reps\", \"2000 m\"): count towards the goal; the time is taken by itself when you reach it.",
     "**AMRAP**: tap **+1 round** and count reps. If a round has a fixed number of reps, just count reps: full rounds roll over by themselves.",
-    "**EMOM**: a grid of minutes. Once the clock runs, passed minutes tick themselves off. Only tap a minute your team missed (tap again to undo). **Now / Next** shows this minute's exercise, the time left and what comes next." ] },
+    "**EMOM**: a grid of minutes. Once the clock runs, passed minutes tick themselves off. Only tap a minute your team missed (tap again to undo). **Now / Next** shows this minute's exercise, the time left and what comes next.",
+    "**Tabata**: a grid of intervals (20 s work, 10 s rest, or whatever the workout says). Count your reps with the + buttons while you work; the selected interval follows the clock and stays on the one you just did during the rest, so you can still add reps then. Tap another interval to fix it. **Now / Next** shows Work or Rest with the time left." ] },
   { h: "Big view", team: true, p: [
     "Prop your phone up where you can see it and tap **Big view**: just the clock, where you are now and where you go next, in big type. Tap **Back to counting** to enter your numbers. Your phone remembers which view you had." ] },
   { h: "Fixing a mistake", team: true, p: [
@@ -2943,7 +3013,7 @@ const GUIDE = [
     "Don't leave your phone lying around unlocked in the gym: anyone who picks it up can use all of it, not just this page. Lock it when you put it down. This app only keeps the screen on; it can't protect your phone." ] },
   { h: "Who wins", team: true, p: [
     "Each station ranks the teams (1 is best, ties share a place). The ranks add up to points, and the **lowest points win**. With several rounds, each station counts all rounds together.",
-    "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so." ] },
+    "An EMOM grid is your team's own progress and doesn't count for the ranking, unless the workout says so. A Tabata counts with your total reps (or your lowest interval, if the workout says so)." ] },
   { h: "Starting a session", p: [
     "Your own trainer link (**Trainer tools > Links > Send trainer link**, ends in ?trainer) opens the trainer view straight away; bookmark it or add it to the home screen. Without it, the small **Trainer?** link under the teams asks before switching.",
     "The first time on a phone, the trainer view asks for the **trainer PIN**. The phone remembers it; when the PIN is changed, every trainer phone asks again. Athletes and the big screen never need it.",
